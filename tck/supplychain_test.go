@@ -27,9 +27,9 @@ import (
 	apprelease "github.com/Rubentxu/golem/internal/application/release"
 	"github.com/Rubentxu/golem/internal/application/runtime"
 	appscm "github.com/Rubentxu/golem/internal/application/scm"
+	appsupplychain "github.com/Rubentxu/golem/internal/application/supplychain"
 	appver "github.com/Rubentxu/golem/internal/application/verification"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
-	appsupplychain "github.com/Rubentxu/golem/internal/application/supplychain"
 )
 
 // loadFixture reads a testdata fixture file.
