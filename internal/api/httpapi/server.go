@@ -172,6 +172,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/requirements/{id}", s.handleGetRequirement)
 	mux.HandleFunc("POST /api/v1/graph/neighborhood", s.handleNeighborhood)
 	mux.HandleFunc("GET /api/v1/search", s.handleSearch)
+	mux.HandleFunc("POST /api/v1/work-types", s.handleRegisterWorkType)
+	mux.HandleFunc("GET /api/v1/work-types/{name}", s.handleGetWorkType)
 	return mux
 }
 
@@ -254,6 +256,8 @@ func muxMatch(r *http.Request) (bool, string) {
 		{http.MethodGet, "/api/v1/requirements/{id}"},
 		{http.MethodPost, "/api/v1/graph/neighborhood"},
 		{http.MethodGet, "/api/v1/search"},
+		{http.MethodPost, "/api/v1/work-types"},
+		{http.MethodGet, "/api/v1/work-types/{name}"},
 	}
 	for _, rt := range routes {
 		if r.Method == rt.method {
@@ -339,8 +343,10 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) error {
 // ---- handlers ----
 
 type createWorkItemBody struct {
-	Title string `json:"title"`
-	Type  string `json:"type"`
+	Title    string         `json:"title"`
+	Type     string         `json:"type"`
+	TypeName string         `json:"type_name,omitempty"`
+	Fields   map[string]any `json:"fields,omitempty"`
 }
 
 func (s *Server) handleCreateWorkItem(w http.ResponseWriter, r *http.Request) {
@@ -370,7 +376,7 @@ func (s *Server) handleCreateWorkItem(w http.ResponseWriter, r *http.Request) {
 		Actor:         actor,
 		CommandID:     idemKey,
 		CorrelationID: corr,
-		Payload:       appwork.CreateWorkItem{Title: body.Title, ItemType: body.Type},
+		Payload:       appwork.CreateWorkItem{Title: body.Title, ItemType: body.Type, TypeName: body.TypeName, Fields: body.Fields},
 	})
 	if err != nil {
 		s.writeCommandError(w, err, corr)

@@ -20,6 +20,7 @@ import (
 const (
 	KindWorkItem    = "WorkItem"
 	KindRequirement = "Requirement"
+	KindWorkType    = "WorkType"
 )
 
 // Projector maps journal events to graph mutations. Unknown event types
@@ -41,11 +42,20 @@ func (Projector) Project(env ports.RawEvent) (ports.GraphMutation, error) {
 		if p.ItemID == "" {
 			return m, fmt.Errorf("projection %s: empty item_id", env.EventType)
 		}
-		m.Ops = append(m.Ops, nodeUpsert(p.ItemID, KindWorkItem, map[string]any{
+		attrs := map[string]any{
 			"title":  p.Title,
 			"type":   p.ItemType,
 			"status": p.Status,
-		}))
+		}
+		if p.TypeName != "" {
+			attrs["type_name"] = p.TypeName
+		}
+		for k, v := range p.Fields {
+			// Namespace custom fields to avoid collisions with canonical
+			// attributes.
+			attrs["field_"+k] = v
+		}
+		m.Ops = append(m.Ops, nodeUpsert(p.ItemID, KindWorkItem, attrs))
 
 	case work.EventItemUpdated:
 		var p work.ItemUpdated
@@ -79,6 +89,30 @@ func (Projector) Project(env ports.RawEvent) (ports.GraphMutation, error) {
 			"statement": p.Statement,
 			"status":    p.Status,
 		}))
+
+	case work.EventTypeRegistered:
+		var p work.TypeRegistered
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
+		}
+		if p.Name == "" {
+			return m, fmt.Errorf("projection %s: empty name", env.EventType)
+		}
+		attrs := map[string]any{
+			"name":    p.Name,
+			"initial": p.Initial,
+		}
+		// Slices are JSON-roundtrippable attributes (digest-stable).
+		if b, err := json.Marshal(p.States); err == nil {
+			attrs["states"] = json.RawMessage(b)
+		}
+		if b, err := json.Marshal(p.Transitions); err == nil {
+			attrs["transitions"] = json.RawMessage(b)
+		}
+		if b, err := json.Marshal(p.Fields); err == nil {
+			attrs["fields"] = json.RawMessage(b)
+		}
+		m.Ops = append(m.Ops, nodeUpsert(p.Name, KindWorkType, attrs))
 
 	case work.EventItemLinked:
 		var p work.ItemLinked

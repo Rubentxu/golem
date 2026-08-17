@@ -35,8 +35,8 @@ func TestM2SliceRequirementsAndConcurrency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs))
-	rt.Bus.Register(appwork.CmdUpdateWorkItem, appwork.UpdateWorkItemHandler(rt.Journal))
+	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, rt.Graph))
+	rt.Bus.Register(appwork.CmdUpdateWorkItem, appwork.UpdateWorkItemHandler(rt.Journal, rt.Graph))
 	rt.Bus.Register(appwork.CmdLinkWorkItems, appwork.LinkWorkItemsHandler(rt.Graph))
 	rt.Bus.Register(appreq.CmdCreateRequirement, appreq.CreateRequirementHandler(rt.IDs))
 
@@ -195,5 +195,169 @@ func TestM2SliceRequirementsAndConcurrency(t *testing.T) {
 	decodeTo(notFound, &problem)
 	if notFound.StatusCode != http.StatusNotFound || problem.Code != httpapi.CodeNotFound {
 		t.Fatalf("not found: %s %+v", notFound.Status, problem)
+	}
+}
+
+// TestDynamicSchemasAndWorkflows covers configurable work items (M2):
+// register a WorkType with custom fields and a workflow, then create a
+// typed item (field validation, initial state), follow valid transitions
+// and get 422 on invalid ones. Untyped items keep free-form status.
+func TestDynamicSchemasAndWorkflows(t *testing.T) {
+	rt, err := runtime.New(runtime.Options{
+		Journal:    journalmem.NewJournal(),
+		Graph:      graphmem.NewGraph(),
+		Registry:   registrymem.NewRegistry(),
+		Transport:  transportmem.NewTransport(),
+		Checkpoint: checkpointmem.NewCheckpoints(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt.Bus.Register(appwork.CmdRegisterWorkType, appwork.RegisterWorkTypeHandler())
+	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, rt.Graph))
+	rt.Bus.Register(appwork.CmdUpdateWorkItem, appwork.UpdateWorkItemHandler(rt.Journal, rt.Graph))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = rt.Run(ctx, 10, 5*time.Millisecond) }()
+
+	srv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).Handler())
+	defer srv.Close()
+	client := srv.Client()
+
+	do := func(method, path, idemKey, body string) *http.Response {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
+		req.Header.Set("X-Golem-Tenant", "t_types")
+		if idemKey != "" {
+			req.Header.Set("Idempotency-Key", idemKey)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	// 1. Register the type: schema (priority required, estimate optional)
+	// and workflow open→in_progress→done plus open→done.
+	typeDef := `{
+		"name": "task",
+		"initial": "open",
+		"states": ["open", "in_progress", "done"],
+		"transitions": [{"from":"open","to":"in_progress"},{"from":"in_progress","to":"done"},{"from":"open","to":"done"}],
+		"fields": [{"name":"priority","type":"string","required":true},{"name":"estimate","type":"number","required":false}]
+	}`
+	if resp := do(http.MethodPost, "/api/v1/work-types", "type-key-0001", typeDef); resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("register type: %s", resp.Status)
+	} else {
+		resp.Body.Close()
+	}
+
+	// Invalid definitions are rejected: transition referencing ghost state.
+	badDef := `{"name":"bad","initial":"a","states":["a"],"transitions":[{"from":"a","to":"zz"}],"fields":[]}`
+	if resp := do(http.MethodPost, "/api/v1/work-types", "type-key-0002", badDef); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid def: %s", resp.Status)
+	} else {
+		resp.Body.Close()
+	}
+
+	// Wait until the type is projected.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, err := rt.Graph.GetNode(ctx, "t_types", "task"); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("work type never projected")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// GET the definition back.
+	if resp := do(http.MethodGet, "/api/v1/work-types/task", "", ""); resp.StatusCode != http.StatusOK {
+		t.Fatalf("get type: %s", resp.Status)
+	} else {
+		resp.Body.Close()
+	}
+
+	// 2. Typed item without the required field: 422.
+	if resp := do(http.MethodPost, "/api/v1/work-items", "item-key-0001",
+		`{"title":"No priority","type":"task","type_name":"task"}`); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("missing required field: %s", resp.Status)
+	} else {
+		resp.Body.Close()
+	}
+
+	// 3. Typed item with wrong field type: 422.
+	if resp := do(http.MethodPost, "/api/v1/work-items", "item-key-0002",
+		`{"title":"Bad number","type":"task","type_name":"task","fields":{"priority":"high","estimate":"lots"}}`); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("wrong field type: %s", resp.Status)
+	} else {
+		resp.Body.Close()
+	}
+
+	// 4. Valid typed item: accepted, starts at workflow initial "open".
+	var itemID string
+	resp := do(http.MethodPost, "/api/v1/work-items", "item-key-0003",
+		`{"title":"Typed item","type":"task","type_name":"task","fields":{"priority":"high","estimate":3}}`)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("typed item: %s", resp.Status)
+	}
+	resp.Body.Close()
+	evs, _, _ := rt.Journal.Replay(ctx, 0, 0)
+	for _, e := range evs {
+		if strings.HasPrefix(e.StreamID, "workitem:") && strings.Contains(string(e.Payload), "Typed item") {
+			itemID = e.StreamID[len("workitem:"):]
+		}
+	}
+	if itemID == "" {
+		t.Fatal("typed item not journaled")
+	}
+
+	// Wait for projection, then assert initial state + custom fields.
+	for {
+		n, err := rt.Graph.GetNode(ctx, "t_types", itemID)
+		if err == nil {
+			if n.Attributes["status"] != "open" {
+				t.Fatalf("initial status = %v, want open", n.Attributes["status"])
+			}
+			if n.Attributes["field_priority"] != "high" {
+				t.Fatalf("custom field = %v", n.Attributes["field_priority"])
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("typed item never projected")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// 5. Invalid transition (done→open is not declared): 422.
+	if resp := do(http.MethodPatch, "/api/v1/work-items/"+itemID, "upd-key-0001", `{"status":"done"}`); resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("open→done: %s", resp.Status)
+	} else {
+		resp.Body.Close()
+	}
+	// Wait until the status update projects, then attempt an invalid one.
+	for {
+		n, err := rt.Graph.GetNode(ctx, "t_types", itemID)
+		if err == nil && n.Attributes["status"] == "done" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("status update never projected")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if resp := do(http.MethodPatch, "/api/v1/work-items/"+itemID, "upd-key-0002", `{"status":"open"}`); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("done→open should be 422: %s", resp.Status)
+	} else {
+		var p httpapi.Problem
+		_ = json.NewDecoder(resp.Body).Decode(&p)
+		resp.Body.Close()
+		if p.Code != httpapi.CodeDomainRejection {
+			t.Fatalf("problem = %+v", p)
+		}
 	}
 }

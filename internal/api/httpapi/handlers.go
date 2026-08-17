@@ -10,6 +10,7 @@ import (
 	appreq "github.com/Rubentxu/golem/internal/application/requirements"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
 	"github.com/Rubentxu/golem/internal/ports"
+	work "github.com/Rubentxu/golem/internal/work"
 )
 
 // ---- GET /api/v1/work-items/{id} and /api/v1/requirements/{id} ----
@@ -299,12 +300,90 @@ func q2s(r *http.Request, key string) string {
 	return strings.TrimSpace(r.URL.Query().Get(key))
 }
 
+// ---- Work types (dynamic schemas + workflows) ----
+
+type registerWorkTypeBody struct {
+	Name        string            `json:"name"`
+	Initial     string            `json:"initial"`
+	States      []string          `json:"states"`
+	Transitions []work.Transition `json:"transitions"`
+	Fields      []work.FieldDef   `json:"fields"`
+}
+
+func (s *Server) handleRegisterWorkType(w http.ResponseWriter, r *http.Request) {
+	corr := s.correlationOf(r)
+	tenant, actor, ok := tenantActor(r)
+	if !ok {
+		s.problem(w, http.StatusBadRequest, CodeMissingTenant, "X-Golem-Tenant header is mandatory", corr)
+		return
+	}
+	idemKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if len(idemKey) < 8 {
+		s.problem(w, http.StatusBadRequest, CodeInvalidArgument, "Idempotency-Key header is required (min 8 chars)", corr)
+		return
+	}
+
+	var body registerWorkTypeBody
+	if err := decodeBody(w, r, &body); err != nil {
+		s.problem(w, http.StatusBadRequest, CodeInvalidArgument, "invalid JSON body: "+err.Error(), corr)
+		return
+	}
+
+	receipt, err := s.commands.Submit(r.Context(), command.Command{
+		Name:          appwork.CmdRegisterWorkType,
+		TenantID:      tenant,
+		Actor:         actor,
+		CommandID:     idemKey,
+		CorrelationID: corr,
+		Payload:       appwork.RegisterWorkType(body),
+	})
+	if err != nil {
+		s.writeCommandError(w, err, corr)
+		return
+	}
+	status := http.StatusAccepted
+	if receipt.Duplicate {
+		status = http.StatusOK
+	}
+	writeJSON(w, status, Receipt{
+		CommandID: receipt.CommandID, EventIDs: receipt.EventIDs,
+		Position: uint64(receipt.Position), Duplicate: receipt.Duplicate,
+	})
+}
+
+func (s *Server) handleGetWorkType(w http.ResponseWriter, r *http.Request) {
+	corr := s.correlationOf(r)
+	tenant, _, ok := tenantActor(r)
+	if !ok {
+		s.problem(w, http.StatusBadRequest, CodeMissingTenant, "X-Golem-Tenant header is mandatory", corr)
+		return
+	}
+	name := r.PathValue("name")
+
+	n, err := s.graph.GetNode(r.Context(), tenant, name)
+	if err != nil {
+		if errors.Is(err, ports.ErrNodeNotFound) {
+			s.problem(w, http.StatusNotFound, CodeNotFound, "work type not found", corr)
+			return
+		}
+		s.problem(w, http.StatusInternalServerError, CodeInternal, "graph query failed", corr)
+		return
+	}
+	if n.Kind != "WorkType" {
+		s.problem(w, http.StatusNotFound, CodeNotFound, "work type not found", corr)
+		return
+	}
+	writeJSON(w, http.StatusOK, n.Attributes)
+}
+
 // ---- shared error mapping ----
 
 func (s *Server) writeCommandError(w http.ResponseWriter, err error, corr string) {
 	switch {
 	case errors.Is(err, appwork.ErrEmptyTitle), errors.Is(err, appwork.ErrEmptyType),
 		errors.Is(err, appwork.ErrNothingToUpdate), errors.Is(err, appwork.ErrInvalidRelation),
+		errors.Is(err, appwork.ErrInvalidTypeDef), errors.Is(err, appwork.ErrUnknownTypeName),
+		errors.Is(err, appwork.ErrFieldValidation), errors.Is(err, appwork.ErrInvalidTransition),
 		errors.Is(err, appreq.ErrEmptyTitle):
 		s.problem(w, http.StatusUnprocessableEntity, CodeDomainRejection, err.Error(), corr)
 	case errors.Is(err, appwork.ErrItemNotFound):

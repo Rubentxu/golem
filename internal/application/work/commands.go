@@ -5,6 +5,7 @@ package work
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -16,18 +17,23 @@ import (
 
 // Domain validation errors of the Work context.
 var (
-	ErrEmptyTitle      = errors.New("work: title is mandatory")
-	ErrEmptyType       = errors.New("work: item type is mandatory")
-	ErrItemNotFound    = errors.New("work: work item not found")
-	ErrInvalidRelation = errors.New("work: invalid relation")
-	ErrNothingToUpdate = errors.New("work: nothing to update")
+	ErrEmptyTitle        = errors.New("work: title is mandatory")
+	ErrEmptyType         = errors.New("work: item type is mandatory")
+	ErrItemNotFound      = errors.New("work: work item not found")
+	ErrInvalidRelation   = errors.New("work: invalid relation")
+	ErrNothingToUpdate   = errors.New("work: nothing to update")
+	ErrInvalidTypeDef    = errors.New("work: invalid work type definition")
+	ErrUnknownTypeName   = errors.New("work: unknown work type")
+	ErrFieldValidation   = errors.New("work: field validation failed")
+	ErrInvalidTransition = errors.New("work: invalid status transition")
 )
 
 // Command names of this context.
 const (
-	CmdCreateWorkItem = "work.create-work-item"
-	CmdUpdateWorkItem = "work.update-work-item"
-	CmdLinkWorkItems  = "work.link-work-items"
+	CmdCreateWorkItem   = "work.create-work-item"
+	CmdUpdateWorkItem   = "work.update-work-item"
+	CmdLinkWorkItems    = "work.link-work-items"
+	CmdRegisterWorkType = "work.register-work-type"
 )
 
 // CanonicalRelation reports whether rel belongs to the GOLEM ontology
@@ -45,8 +51,10 @@ func CanonicalRelation(rel string) bool {
 
 // CreateWorkItem is the payload of CmdCreateWorkItem.
 type CreateWorkItem struct {
-	Title    string `json:"title"`
-	ItemType string `json:"type"`
+	Title    string         `json:"title"`
+	ItemType string         `json:"type"`
+	TypeName string         `json:"type_name,omitempty"` // registered WorkType
+	Fields   map[string]any `json:"fields,omitempty"`    // custom fields (typed items)
 }
 
 // UpdateWorkItem is the payload of CmdUpdateWorkItem. Nil fields are
@@ -68,12 +76,160 @@ type LinkWorkItems struct {
 	Relation string `json:"relation"`
 }
 
+// RegisterWorkType is the payload of CmdRegisterWorkType.
+type RegisterWorkType struct {
+	Name        string                  `json:"name"`
+	Initial     string                  `json:"initial"`
+	States      []string                `json:"states"`
+	Transitions []domainwork.Transition `json:"transitions"`
+	Fields      []domainwork.FieldDef   `json:"fields"`
+}
+
+// RegisterWorkTypeHandler validates and journals a WorkType definition.
+// The definition is authoritative once projected; items reference it by
+// name at creation.
+func RegisterWorkTypeHandler() appcmd.Handler {
+	return func(_ context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
+		p, ok := cmd.Payload.(RegisterWorkType)
+		if !ok {
+			return nil, errors.New("work: payload must be work.RegisterWorkType")
+		}
+		if err := validateTypeDef(p); err != nil {
+			return nil, err
+		}
+		return []appcmd.EventDraft{{
+			EventType:     domainwork.EventTypeRegistered,
+			StreamID:      "worktype:" + p.Name,
+			SchemaVersion: 1,
+			Payload: domainwork.TypeRegistered{
+				Name: p.Name, Initial: p.Initial,
+				States: p.States, Transitions: p.Transitions, Fields: p.Fields,
+			},
+		}}, nil
+	}
+}
+
+func validateTypeDef(p RegisterWorkType) error {
+	name := strings.TrimSpace(p.Name)
+	if name == "" {
+		return fmt.Errorf("%w: name is mandatory", ErrInvalidTypeDef)
+	}
+	if len(p.States) == 0 {
+		return fmt.Errorf("%w: at least one state", ErrInvalidTypeDef)
+	}
+	seen := map[string]bool{}
+	for _, s := range p.States {
+		if strings.TrimSpace(s) == "" || seen[s] {
+			return fmt.Errorf("%w: states must be non-empty and unique", ErrInvalidTypeDef)
+		}
+		seen[s] = true
+	}
+	if !seen[p.Initial] {
+		return fmt.Errorf("%w: initial %q is not a state", ErrInvalidTypeDef, p.Initial)
+	}
+	for _, t := range p.Transitions {
+		if !seen[t.From] || !seen[t.To] {
+			return fmt.Errorf("%w: transition %s→%s references unknown states", ErrInvalidTypeDef, t.From, t.To)
+		}
+	}
+	reserved := map[string]bool{"title": true, "type": true, "status": true}
+	fnames := map[string]bool{}
+	for _, f := range p.Fields {
+		n := strings.TrimSpace(f.Name)
+		if n == "" || reserved[n] || fnames[n] {
+			return fmt.Errorf("%w: field names must be unique and not reserved", ErrInvalidTypeDef)
+		}
+		fnames[n] = true
+		switch f.Type {
+		case "string", "number", "bool":
+		default:
+			return fmt.Errorf("%w: field %q type must be string|number|bool", ErrInvalidTypeDef, n)
+		}
+	}
+	return nil
+}
+
+// workTypeOf loads a projected WorkType definition by name.
+func workTypeOf(ctx context.Context, graph ports.GraphStore, tenant ports.TenantID, name string) (*domainwork.TypeRegistered, error) {
+	n, err := graph.GetNode(ctx, tenant, name)
+	if err != nil {
+		if errors.Is(err, ports.ErrNodeNotFound) {
+			return nil, fmt.Errorf("%w: %s", ErrUnknownTypeName, name)
+		}
+		return nil, err
+	}
+	if n.Kind != "WorkType" {
+		return nil, fmt.Errorf("%w: %s", ErrUnknownTypeName, name)
+	}
+	return typeFromAttrs(n.Attributes), nil
+}
+
+// typeFromAttrs rebuilds a definition from projected node attributes
+// (mirror of the projector mapping).
+func typeFromAttrs(a map[string]any) *domainwork.TypeRegistered {
+	decode := func(v any, out any) {
+		if b, err := json.Marshal(v); err == nil {
+			_ = json.Unmarshal(b, out)
+		}
+	}
+	def := &domainwork.TypeRegistered{}
+	if s, ok := a["name"].(string); ok {
+		def.Name = s
+	}
+	if s, ok := a["initial"].(string); ok {
+		def.Initial = s
+	}
+	decode(a["states"], &def.States)
+	decode(a["transitions"], &def.Transitions)
+	decode(a["fields"], &def.Fields)
+	return def
+}
+
+// validateFields checks custom fields against the type schema.
+func validateFields(def *domainwork.TypeRegistered, fields map[string]any) error {
+	byName := map[string]domainwork.FieldDef{}
+	for _, f := range def.Fields {
+		byName[f.Name] = f
+	}
+	for name, def := range byName {
+		v, present := fields[name]
+		if !present || v == nil {
+			if def.Required {
+				return fmt.Errorf("%w: %q is required", ErrFieldValidation, name)
+			}
+			continue
+		}
+		switch def.Type {
+		case "string":
+			if _, ok := v.(string); !ok {
+				return fmt.Errorf("%w: %q must be a string", ErrFieldValidation, name)
+			}
+		case "number":
+			if _, ok := v.(float64); !ok {
+				return fmt.Errorf("%w: %q must be a number", ErrFieldValidation, name)
+			}
+		case "bool":
+			if _, ok := v.(bool); !ok {
+				return fmt.Errorf("%w: %q must be a bool", ErrFieldValidation, name)
+			}
+		}
+	}
+	for name := range fields {
+		if _, known := byName[name]; !known {
+			return fmt.Errorf("%w: %q is not defined in the type schema", ErrFieldValidation, name)
+		}
+	}
+	return nil
+}
+
 // CreateWorkItemHandler returns the handler for CmdCreateWorkItem. The
 // item ID is generated server-side from the injected IDGenerator; retries
 // of the same command_id return the stored receipt without re-running
-// this handler, so the ID stays stable.
-func CreateWorkItemHandler(gen ports.IDGenerator) appcmd.Handler {
-	return func(_ context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
+// this handler, so the ID stays stable. When TypeName is set, the type
+// definition (graph projection) validates Fields and supplies the
+// initial workflow state.
+func CreateWorkItemHandler(gen ports.IDGenerator, graph ports.GraphStore) appcmd.Handler {
+	return func(ctx context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
 		p, ok := cmd.Payload.(CreateWorkItem)
 		if !ok {
 			return nil, errors.New("work: payload must be work.CreateWorkItem")
@@ -87,16 +243,27 @@ func CreateWorkItemHandler(gen ports.IDGenerator) appcmd.Handler {
 			return nil, ErrEmptyType
 		}
 
+		status := "open"
+		fields := p.Fields
+		if name := strings.TrimSpace(p.TypeName); name != "" {
+			def, err := workTypeOf(ctx, graph, cmd.TenantID, name)
+			if err != nil {
+				return nil, err
+			}
+			if err := validateFields(def, fields); err != nil {
+				return nil, err
+			}
+			status = def.Initial
+		}
+
 		itemID := gen.NewID()
 		return []appcmd.EventDraft{{
 			EventType:     domainwork.EventItemCreated,
 			StreamID:      "workitem:" + itemID,
 			SchemaVersion: 1,
 			Payload: domainwork.ItemCreated{
-				ItemID:   itemID,
-				Title:    title,
-				ItemType: typ,
-				Status:   "open",
+				ItemID: itemID, Title: title, ItemType: typ,
+				TypeName: strings.TrimSpace(p.TypeName), Status: status, Fields: fields,
 			},
 		}}, nil
 	}
@@ -105,8 +272,10 @@ func CreateWorkItemHandler(gen ports.IDGenerator) appcmd.Handler {
 // UpdateWorkItemHandler returns the handler for CmdUpdateWorkItem. The
 // item must exist (its journal stream is non-empty) and, when expected is
 // provided, the stream must still be at that version — enforced
-// atomically by the journal's conditional append (ADR-021).
-func UpdateWorkItemHandler(journal ports.JournalStore) appcmd.Handler {
+// atomically by the journal's conditional append (ADR-021). Status
+// changes of typed items must follow the type workflow (the current
+// status is folded from the stream; the workflow from the projection).
+func UpdateWorkItemHandler(journal ports.JournalStore, graph ports.GraphStore) appcmd.Handler {
 	return func(ctx context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
 		p, ok := cmd.Payload.(UpdateWorkItem)
 		if !ok {
@@ -138,6 +307,19 @@ func UpdateWorkItemHandler(journal ports.JournalStore) appcmd.Handler {
 			version = *p.ExpectedVersion
 		}
 
+		if p.Status != nil {
+			current, typeName := foldItemState(evs)
+			if typeName != "" {
+				def, err := workTypeOf(ctx, graph, cmd.TenantID, typeName)
+				if err != nil {
+					return nil, err
+				}
+				if err := validateTransition(def, current, *p.Status); err != nil {
+					return nil, err
+				}
+			}
+		}
+
 		return []appcmd.EventDraft{{
 			EventType:             domainwork.EventItemUpdated,
 			StreamID:              stream,
@@ -146,6 +328,40 @@ func UpdateWorkItemHandler(journal ports.JournalStore) appcmd.Handler {
 			ExpectedStreamVersion: &version,
 		}}, nil
 	}
+}
+
+// foldItemState rebuilds (currentStatus, typeName) from the item stream:
+// created sets both; updates overwrite the status. Domain folding is
+// deterministic and cheap (streams are short).
+func foldItemState(evs []ports.RawEvent) (status, typeName string) {
+	for _, env := range evs {
+		switch env.EventType {
+		case domainwork.EventItemCreated:
+			var p domainwork.ItemCreated
+			if json.Unmarshal(env.Payload, &p) == nil {
+				status, typeName = p.Status, p.TypeName
+			}
+		case domainwork.EventItemUpdated:
+			var p domainwork.ItemUpdated
+			if json.Unmarshal(env.Payload, &p) == nil && p.Status != nil {
+				status = *p.Status
+			}
+		}
+	}
+	return status, typeName
+}
+
+// validateTransition allows same-status no-ops and declared transitions.
+func validateTransition(def *domainwork.TypeRegistered, from, to string) error {
+	if from == to {
+		return nil
+	}
+	for _, t := range def.Transitions {
+		if t.From == from && t.To == to {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %s→%s in type %q", ErrInvalidTransition, from, to, def.Name)
 }
 
 // LinkWorkItemsHandler returns the handler for CmdLinkWorkItems. Both
