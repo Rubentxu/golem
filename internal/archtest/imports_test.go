@@ -102,9 +102,15 @@ func TestForbiddenImports(t *testing.T) {
 			if internal && strings.HasPrefix(imp, moduleName+"/adapters/") {
 				violations = append(violations, violation{rel, imp, "internal/ imports adapters/ (ADR-047: vendor types never cross adapter boundaries)"})
 			}
-			for _, deny := range vendorDenyList {
-				if strings.HasPrefix(imp, deny) {
-					violations = append(violations, violation{rel, imp, "vendor SDK from deny list"})
+			// Known vendor SDKs are allowed inside adapters/ only
+			// (ADR-045); everywhere else — internal/, cmd/, tck/ — they
+			// are denied with an explicit message. The blanket rule above
+			// already blocks all third-party imports in internal/.
+			if !strings.HasPrefix(rel, "adapters/") {
+				for _, deny := range vendorDenyList {
+					if strings.HasPrefix(imp, deny) {
+						violations = append(violations, violation{rel, imp, "vendor SDK outside adapters/ (ADR-045: every external dependency sits behind a port)"})
+					}
 				}
 			}
 		}
