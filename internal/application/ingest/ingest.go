@@ -20,6 +20,7 @@ import (
 	appci "github.com/Rubentxu/golem/internal/application/ci"
 	appcmd "github.com/Rubentxu/golem/internal/application/command"
 	appscm "github.com/Rubentxu/golem/internal/application/scm"
+	appsupplychain "github.com/Rubentxu/golem/internal/application/supplychain"
 	domainci "github.com/Rubentxu/golem/internal/ci"
 	"github.com/Rubentxu/golem/internal/ports"
 )
@@ -61,6 +62,10 @@ func New(bus Submitter) *Service {
 	s := &Service{translators: map[string]Translator{}, bus: bus}
 	s.Register(GitHubPush{})
 	s.Register(GenericCI{})
+	s.Register(SBOMSPDX{})
+	s.Register(SBOMCycloneDX{})
+	s.Register(AttestationInToto{})
+	s.Register(VEXOpenVEX{})
 	return s
 }
 
@@ -192,4 +197,184 @@ func (GenericCI) Translate(payload []byte) ([]IngestedCommand, error) {
 			Status: p.Status, Artifacts: artifacts,
 		},
 	}}, nil
+}
+
+// ---- SBOM SPDX translator ----
+
+// SBOMSPDX translates SPDX SBOM webhook payloads.
+type SBOMSPDX struct{}
+
+// Provider identifies the translator.
+func (SBOMSPDX) Provider() string { return "sbom-spdx" }
+
+type sbomSpdxPayload struct {
+	ExternalID string `json:"external_id"`
+	Document   struct {
+		Name string `json:"name"`
+	} `json:"document"`
+	RawB64 string `json:"raw_b64"` // base64-encoded SPDX document
+}
+
+// Translate implements Translator.
+func (SBOMSPDX) Translate(payload []byte) ([]IngestedCommand, error) {
+	var p sbomSpdxPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return nil, fmt.Errorf("ingest sbom-spdx: bad payload: %w", err)
+	}
+	if p.ExternalID == "" {
+		return nil, errors.New("ingest sbom-spdx: external_id is mandatory")
+	}
+	return []IngestedCommand{{
+		Name:      appsupplychain.CmdIngestSBOM,
+		CommandID: "ingest.sbom-spdx.doc." + p.ExternalID,
+		Payload: appsupplychain.IngestSBOM{
+			Provider:     "sbom-spdx",
+			ExternalDocID: p.ExternalID,
+			FormatHint:  "spdx-2.3",
+			RawB64:      p.RawB64,
+		},
+	}}, nil
+}
+
+// ---- SBOM CycloneDX translator ----
+
+// SBOMCycloneDX translates CycloneDX SBOM webhook payloads.
+type SBOMCycloneDX struct{}
+
+// Provider identifies the translator.
+func (SBOMCycloneDX) Provider() string { return "sbom-cyclonedx" }
+
+type sbomCDXPayload struct {
+	ExternalID string `json:"external_id"`
+	Document   struct {
+		Metadata struct {
+			Component struct {
+				Name string `json:"name"`
+			} `json:"component"`
+		} `json:"metadata"`
+	} `json:"document"`
+	RawB64 string `json:"raw_b64"`
+}
+
+// Translate implements Translator.
+func (SBOMCycloneDX) Translate(payload []byte) ([]IngestedCommand, error) {
+	var p sbomCDXPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return nil, fmt.Errorf("ingest sbom-cyclonedx: bad payload: %w", err)
+	}
+	if p.ExternalID == "" {
+		return nil, errors.New("ingest sbom-cyclonedx: external_id is mandatory")
+	}
+	return []IngestedCommand{{
+		Name:      appsupplychain.CmdIngestSBOM,
+		CommandID: "ingest.sbom-cyclonedx.doc." + p.ExternalID,
+		Payload: appsupplychain.IngestSBOM{
+			Provider:     "sbom-cyclonedx",
+			ExternalDocID: p.ExternalID,
+			FormatHint:  "cyclonedx-1.5",
+			RawB64:      p.RawB64,
+		},
+	}}, nil
+}
+
+// ---- Attestation in-toto translator ----
+
+// AttestationInToto translates in-toto/SLSA attestation webhook payloads.
+type AttestationInToto struct{}
+
+// Provider identifies the translator.
+func (AttestationInToto) Provider() string { return "attestation-intoto" }
+
+type attestationPayload struct {
+	SubjectDigest string `json:"subject_digest"` // sha256:...
+	PredicateType string `json:"predicate_type"` // slsa-provenance|intoto-statement|intoto-link
+	StatementB64  string `json:"statement_b64"`  // base64-encoded in-toto statement JSON
+	Provider      string `json:"provider"`
+}
+
+// Translate implements Translator.
+func (AttestationInToto) Translate(payload []byte) ([]IngestedCommand, error) {
+	var p attestationPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return nil, fmt.Errorf("ingest attestation-intoto: bad payload: %w", err)
+	}
+	if p.SubjectDigest == "" {
+		return nil, errors.New("ingest attestation-intoto: subject_digest is mandatory")
+	}
+	if p.StatementB64 == "" {
+		return nil, errors.New("ingest attestation-intoto: statement_b64 is mandatory")
+	}
+	return []IngestedCommand{{
+		Name:      appsupplychain.CmdIngestAttestation,
+		CommandID: "ingest.attestation-intoto." + p.SubjectDigest,
+		Payload: appsupplychain.IngestAttestation{
+			ArtifactDigest: p.SubjectDigest,
+			PredicateType:  p.PredicateType,
+			StatementJSON: p.StatementB64,
+			Provider:      p.Provider,
+		},
+	}}, nil
+}
+
+// ---- VEX OpenVEX translator ----
+
+// VEXOpenVEX translates OpenVEX webhook payloads. Each statement in the
+// OpenVEX document becomes one command.
+type VEXOpenVEX struct{}
+
+// Provider identifies the translator.
+func (VEXOpenVEX) Provider() string { return "vex-openvex" }
+
+type vexOpenVEXPayload struct {
+	DocID     string `json:"doc_id"`
+	Statements []struct {
+		ID           string `json:"id"`
+		VulnID      string `json:"vuln_id"`
+		Status       string `json:"status"`
+		Justification string `json:"justification,omitempty"`
+		Product      struct {
+			Identifier string `json:"identifier"` // artifact digest or purl
+			Type       string `json:"type"`      // "artifact" or "purl"
+		} `json:"product"`
+		Provider string `json:"provider"`
+	} `json:"statements"`
+}
+
+// Translate implements Translator.
+func (VEXOpenVEX) Translate(payload []byte) ([]IngestedCommand, error) {
+	var p vexOpenVEXPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return nil, fmt.Errorf("ingest vex-openvex: bad payload: %w", err)
+	}
+	if p.DocID == "" {
+		return nil, errors.New("ingest vex-openvex: doc_id is mandatory")
+	}
+		out := make([]IngestedCommand, 0, len(p.Statements))
+	for i, stmt := range p.Statements {
+		if stmt.ID == "" || stmt.VulnID == "" {
+			continue
+		}
+		cmdID := fmt.Sprintf("ingest.vex-openvex.%s.%d", p.DocID, i)
+		vex := appsupplychain.RecordVEX{
+			StatementID:   stmt.ID,
+			VulnID:        stmt.VulnID,
+			Status:        stmt.Status,
+			Justification: stmt.Justification,
+			Provider:      stmt.Provider,
+		}
+		if stmt.Product.Type == "artifact" {
+			vex.ProductDigest = stmt.Product.Identifier
+		} else if stmt.Product.Type == "purl" {
+			vex.ProductPurl = stmt.Product.Identifier
+		}
+		out = append(out, IngestedCommand{
+			Name:      appsupplychain.CmdRecordVEX,
+			CommandID: cmdID,
+			Payload:   vex,
+		})
+	}
+	if len(out) == 0 {
+		return nil, errors.New("ingest vex-openvex: no valid statements found")
+	}
+	return out, nil
 }
