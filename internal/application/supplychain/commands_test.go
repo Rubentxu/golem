@@ -259,17 +259,23 @@ func TestRecordVEXHandler_RejectsInvalidStatus(t *testing.T) {
 	}
 }
 
-func TestRecordVEXHandler_RejectsUnknownProductDigest(t *testing.T) {
+func TestRecordVEXHandler_AcceptsUnknownProductDigest(t *testing.T) {
+	// Per spec, VEX statements SHALL be accepted even for unknown products.
+	// The projector records affected=0 and defers MITIGATED_BY edge creation
+	// until the product is confirmed in the graph.
 	h := RecordVEXHandler(&fakeGraphStore{nodes: map[string]ports.Node{}})
-	_, err := h(context.Background(), cmd(RecordVEX{
+	drafts, err := h(context.Background(), cmd(RecordVEX{
 		StatementID:   "vex-1",
 		VulnID:        "CVE-2021-23337",
 		ProductDigest: "sha256:unknown",
 		Status:        "not_affected",
 		Provider:      "openvex",
 	}))
-	if err == nil {
-		t.Fatal("expected error for unknown artifact digest")
+	if err != nil {
+		t.Fatalf("unexpected error for unknown artifact digest: %v", err)
+	}
+	if len(drafts) != 1 || drafts[0].EventType != "supplychain.vex.statement.v1" {
+		t.Fatalf("unexpected drafts: %+v", drafts)
 	}
 }
 

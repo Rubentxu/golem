@@ -228,7 +228,11 @@ func ReportVulnerabilityHandler() appcmd.Handler {
 }
 
 // RecordVEXHandler returns the handler for CmdRecordVEX.
-// It validates the VEX status and that the referenced product exists in the graph.
+// It validates the VEX status. Product existence is NOT validated here;
+// the projector defers MITIGATED_BY edge creation until the product is
+// confirmed in the graph (or skips it if the product never appears).
+// Per spec: a VEX statement SHALL be recorded even if the referenced product
+// is unknown, with affected=0 and no edge created.
 func RecordVEXHandler(graph ports.GraphStore) appcmd.Handler {
 	return func(ctx context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
 		p, ok := cmd.Payload.(RecordVEX)
@@ -247,32 +251,9 @@ func RecordVEXHandler(graph ports.GraphStore) appcmd.Handler {
 			return nil, fmt.Errorf("%w: %q", ErrInvalidVEXStatus, p.Status)
 		}
 
-		// Validate product reference exists in graph.
+		// At least one product identifier must be provided.
 		if p.ProductDigest == "" && p.ProductPurl == "" {
 			return nil, ErrInvalidProduct
-		}
-		if p.ProductDigest != "" {
-			// Validate by artifact digest.
-			_, err := graph.GetNode(ctx, cmd.TenantID, p.ProductDigest)
-			if err != nil {
-				if errors.Is(err, ports.ErrNodeNotFound) {
-					return nil, fmt.Errorf("%w: artifact %q not found", ErrInvalidProduct, p.ProductDigest)
-				}
-				return nil, err
-			}
-		} else if p.ProductPurl != "" {
-			// Validate by component purl.
-			normalized, err := domainsupplychain.Normalize(p.ProductPurl)
-			if err != nil {
-				return nil, fmt.Errorf("%w: %q", ErrInvalidPurl, p.ProductPurl)
-			}
-			_, err = graph.GetNode(ctx, cmd.TenantID, normalized)
-			if err != nil {
-				if errors.Is(err, ports.ErrNodeNotFound) {
-					return nil, fmt.Errorf("%w: component %q not found", ErrInvalidProduct, normalized)
-				}
-				return nil, err
-			}
 		}
 
 		streamID := "vex:" + p.StatementID
