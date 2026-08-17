@@ -191,4 +191,178 @@ func RunGraphStoreTCK(t *testing.T, newStore func() ports.GraphStore) {
 			t.Fatal("expected context error")
 		}
 	})
+
+	// Typed-traversal TCK cases (T1.1).
+	t.Run("typed walk honors edge-type filter", func(t *testing.T) {
+		s := newStore()
+		apply(t, s, "t1",
+			upsertNode("n1", "N", nil),
+			upsertNode("n2", "N", nil),
+			upsertNode("n3", "N", nil),
+			upsertEdge("e1", "DEPENDS_ON", "n1", "n2"),
+			upsertEdge("e2", "IMPLEMENTS", "n1", "n3"),
+		)
+		sub, err := s.Traversal(context.Background(), ports.TraversalQuery{
+			TenantID:  "t1",
+			Roots:     []string{"n1"},
+			EdgeTypes: []string{"IMPLEMENTS"},
+			Kinds:     []string{},
+			MaxDepth:  10, MaxNodes: 100, MaxEdges: 100,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sub.Edges) != 1 || sub.Edges[0].Type != "IMPLEMENTS" {
+			t.Fatalf("edges = %v, want only IMPLEMENTS", sub.Edges)
+		}
+		if len(sub.Nodes) != 2 {
+			t.Fatalf("nodes count = %d, want 2", len(sub.Nodes))
+		}
+	})
+
+	t.Run("typed walk sets truncated when max-nodes is hit", func(t *testing.T) {
+		s := newStore()
+		ops := []ports.GraphOp{}
+		for i := 1; i <= 10; i++ {
+			ops = append(ops, upsertNode(fmt.Sprintf("n%d", i), "N", nil))
+		}
+		for i := 1; i < 10; i++ {
+			ops = append(ops, upsertEdge(fmt.Sprintf("e%d", i), "CHAIN", fmt.Sprintf("n%d", i), fmt.Sprintf("n%d", i+1)))
+		}
+		apply(t, s, "t1", ops...)
+		sub, err := s.Traversal(context.Background(), ports.TraversalQuery{
+			TenantID: "t1", Roots: []string{"n1"},
+			EdgeTypes: []string{"CHAIN"}, Kinds: []string{},
+			MaxDepth: 10, MaxNodes: 3, MaxEdges: 100,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !sub.Truncated {
+			t.Fatal("expected Truncated=true when MaxNodes bound is hit")
+		}
+		if len(sub.Nodes) > 3 {
+			t.Fatalf("got %d nodes, want ≤3", len(sub.Nodes))
+		}
+	})
+
+	t.Run("typed walk sets truncated when max-edges is hit", func(t *testing.T) {
+		s := newStore()
+		ops := []ports.GraphOp{}
+		for i := 1; i <= 5; i++ {
+			ops = append(ops, upsertNode(fmt.Sprintf("m%d", i), "N", nil))
+		}
+		for i := 1; i < 5; i++ {
+			ops = append(ops, upsertEdge(fmt.Sprintf("f%d", i), "LINKS", fmt.Sprintf("m%d", i), fmt.Sprintf("m%d", i+1)))
+		}
+		apply(t, s, "t1", ops...)
+		sub, err := s.Traversal(context.Background(), ports.TraversalQuery{
+			TenantID: "t1", Roots: []string{"m1"},
+			EdgeTypes: []string{"LINKS"}, Kinds: []string{},
+			MaxDepth: 10, MaxNodes: 100, MaxEdges: 2,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !sub.Truncated {
+			t.Fatal("expected Truncated=true when MaxEdges bound is hit")
+		}
+		if len(sub.Edges) > 2 {
+			t.Fatalf("got %d edges, want ≤2", len(sub.Edges))
+		}
+	})
+
+	t.Run("typed walk returns empty subgraph for cross-tenant query", func(t *testing.T) {
+		s := newStore()
+		apply(t, s, "t1", upsertNode("x", "N", nil))
+		sub, err := s.Traversal(context.Background(), ports.TraversalQuery{
+			TenantID: "t2", Roots: []string{"x"},
+			EdgeTypes: []string{}, Kinds: []string{},
+			MaxDepth: 10, MaxNodes: 100, MaxEdges: 100,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sub.Nodes) != 0 || len(sub.Edges) != 0 {
+			t.Fatalf("cross-tenant walk should return empty subgraph, got %d nodes / %d edges",
+				len(sub.Nodes), len(sub.Edges))
+		}
+	})
+
+	t.Run("typed walk honors node-kind filter", func(t *testing.T) {
+		s := newStore()
+		apply(t, s, "t1",
+			upsertNode("a", "PackageComponent", nil),
+			upsertNode("b", "Artifact", nil),
+			upsertEdge("r", "CONTAINS", "a", "b"),
+		)
+		sub, err := s.Traversal(context.Background(), ports.TraversalQuery{
+			TenantID:  "t1",
+			Roots:     []string{"a"},
+			EdgeTypes: []string{"CONTAINS"},
+			Kinds:     []string{"Artifact"},
+			MaxDepth:  10, MaxNodes: 100, MaxEdges: 100,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Root is always included as starting point; only Artifact matches the kind filter.
+		if len(sub.Nodes) != 2 {
+			t.Fatalf("nodes = %v, want 2 (root PackageComponent + Artifact)", sub.Nodes)
+		}
+		hasArtifact := false
+		hasRoot := false
+		for _, n := range sub.Nodes {
+			if n.Kind == "Artifact" {
+				hasArtifact = true
+			}
+			if n.Kind == "PackageComponent" {
+				hasRoot = true
+			}
+		}
+		if !hasArtifact || !hasRoot {
+			t.Fatalf("expected both root and Artifact nodes, got %+v", sub.Nodes)
+		}
+	})
+
+	t.Run("typed walk returns truncated=false on complete walk", func(t *testing.T) {
+		s := newStore()
+		apply(t, s, "t1",
+			upsertNode("x", "N", nil),
+			upsertNode("y", "N", nil),
+			upsertEdge("xy", "E", "x", "y"),
+		)
+		sub, err := s.Traversal(context.Background(), ports.TraversalQuery{
+			TenantID: "t1", Roots: []string{"x"},
+			EdgeTypes: []string{"E"}, Kinds: []string{},
+			MaxDepth: 10, MaxNodes: 100, MaxEdges: 100,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sub.Truncated {
+			t.Fatal("expected Truncated=false on complete walk")
+		}
+	})
+
+	t.Run("typed walk honors empty-edge-types as-any", func(t *testing.T) {
+		s := newStore()
+		apply(t, s, "t1",
+			upsertNode("p", "N", nil),
+			upsertNode("q", "N", nil),
+			upsertEdge("pq", "R", "p", "q"),
+		)
+		sub, err := s.Traversal(context.Background(), ports.TraversalQuery{
+			TenantID: "t1", Roots: []string{"p"},
+			EdgeTypes: []string{}, // empty = any
+			Kinds:     []string{},
+			MaxDepth:  10, MaxNodes: 100, MaxEdges: 100,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sub.Edges) != 1 || sub.Edges[0].Type != "R" {
+			t.Fatalf("edges = %v", sub.Edges)
+		}
+	})
 }

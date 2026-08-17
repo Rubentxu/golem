@@ -76,10 +76,25 @@ type Edge struct {
 	Attributes map[string]any
 }
 
+// TraversalQuery is a typed bounded traversal. Every typed traversal must
+// specify tenant, roots, optional edge-type / node-kind filters, and explicit
+// limits (max depth, max nodes/edges, deadline at the context level).
+// Empty EdgeTypes or Kinds mean "any".
+type TraversalQuery struct {
+	TenantID  TenantID
+	Roots     []string
+	EdgeTypes []string // empty = any edge type
+	Kinds     []string // empty = any node kind
+	MaxDepth  int
+	MaxNodes  int
+	MaxEdges  int
+}
+
 // Subgraph is a bounded result set of nodes and edges.
 type Subgraph struct {
-	Nodes []Node
-	Edges []Edge
+	Nodes     []Node
+	Edges     []Edge
+	Truncated bool // true when any bound (depth/nodes/edges) was hit
 }
 
 // GraphStore is the port for the Engineering Graph projection. The graph
@@ -88,6 +103,11 @@ type Subgraph struct {
 type GraphStore interface {
 	Apply(ctx context.Context, tx GraphMutation) (Revision, error)
 	Neighborhood(ctx context.Context, q NeighborhoodQuery) (Subgraph, error)
+	// Traversal is a typed bounded walk with optional edge-type and node-kind
+	// filters. It sets Subgraph.Truncated=true when any bound (MaxDepth,
+	// MaxNodes, MaxEdges) is reached. The walk is undirected: it follows both
+	// incoming and outgoing edges from each visited node.
+	Traversal(ctx context.Context, q TraversalQuery) (Subgraph, error)
 	// GetNode is a bounded point read of one node. Tenant-scoped; returns
 	// ErrNodeNotFound when the node does not exist in the tenant graph.
 	// (Query-safety bounds apply to traversals, not point lookups.)

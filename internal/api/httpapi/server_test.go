@@ -35,6 +35,10 @@ func (f *fakeGraph) Neighborhood(_ context.Context, q ports.NeighborhoodQuery) (
 	return f.sub, f.err
 }
 
+func (f *fakeGraph) Traversal(_ context.Context, _ ports.TraversalQuery) (ports.Subgraph, error) {
+	return f.sub, f.err
+}
+
 func (f *fakeGraph) GetNode(_ context.Context, _ ports.TenantID, _ string) (ports.Node, error) {
 	if len(f.sub.Nodes) == 0 {
 		return ports.Node{}, ports.ErrNodeNotFound

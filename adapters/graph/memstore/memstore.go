@@ -296,6 +296,19 @@ func mergeAttrs(dst, src map[string]any) {
 	}
 }
 
+// makeFilter returns a predicate that returns true for any value that matches
+// one of the accepted strings, or for all values when the accepted set is empty.
+func makeFilter(accepted []string) func(string) bool {
+	if len(accepted) == 0 {
+		return func(string) bool { return true }
+	}
+	set := map[string]bool{}
+	for _, v := range accepted {
+		set[v] = true
+	}
+	return func(v string) bool { return set[v] }
+}
+
 func copyNode(n *ports.Node) ports.Node {
 	c := *n
 	c.Attributes = copyAttrs(n.Attributes)
@@ -306,6 +319,94 @@ func copyEdge(e *ports.Edge) ports.Edge {
 	c := *e
 	c.Attributes = copyAttrs(e.Attributes)
 	return c
+}
+
+// Traversal runs a typed bounded undirected BFS from the existing roots.
+// EdgeTypes and Kinds filters are applied during the walk; empty filters mean
+// "accept any". Subgraph.Truncated is set true when any bound is hit.
+// Results are deterministic for a given graph state and query.
+func (s *Store) Traversal(ctx context.Context, q ports.TraversalQuery) (ports.Subgraph, error) {
+	if q.TenantID == "" {
+		return ports.Subgraph{}, ports.ErrEmptyTenant
+	}
+	if q.MaxDepth <= 0 || q.MaxNodes <= 0 || q.MaxEdges <= 0 {
+		return ports.Subgraph{}, ports.ErrUnboundedQuery
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	g, ok := s.tenants[q.TenantID]
+	if !ok {
+		return ports.Subgraph{}, nil
+	}
+
+	edgeMatches := makeFilter(q.EdgeTypes)
+	nodeMatches := makeFilter(q.Kinds)
+
+	visitedN := map[string]bool{}
+	visitedE := map[string]bool{}
+	resNodes := []ports.Node{}
+	resEdges := []ports.Edge{}
+
+	frontier := []string{}
+	for _, r := range q.Roots {
+		if n, ok := g.nodes[r]; ok && !visitedN[r] {
+			visitedN[r] = true
+			resNodes = append(resNodes, copyNode(n)) // roots always included as starting points
+			frontier = append(frontier, r)
+		}
+	}
+	sort.Strings(frontier)
+
+	truncated := false
+loop:
+	for depth := 0; depth < q.MaxDepth && len(frontier) > 0; depth++ {
+		if err := ctx.Err(); err != nil {
+			return ports.Subgraph{}, err
+		}
+		next := []string{}
+		for _, id := range frontier {
+			edgeIDs := make([]string, 0, len(g.adj[id]))
+			for eid := range g.adj[id] {
+				edgeIDs = append(edgeIDs, eid)
+			}
+			sort.Strings(edgeIDs)
+			for _, eid := range edgeIDs {
+				if visitedE[eid] {
+					continue
+				}
+				e := g.edges[eid]
+				// Apply edge-type filter.
+				if !edgeMatches(e.Type) {
+					continue
+				}
+				visitedE[eid] = true
+				resEdges = append(resEdges, copyEdge(e))
+
+				other := e.SourceID
+				if other == id {
+					other = e.TargetID
+				}
+				if !visitedN[other] {
+					n := g.nodes[other]
+					if nodeMatches(n.Kind) {
+						visitedN[other] = true
+						resNodes = append(resNodes, copyNode(n))
+						next = append(next, other)
+					}
+				}
+				if len(resEdges) >= q.MaxEdges || len(resNodes) >= q.MaxNodes {
+					truncated = true
+					break loop
+				}
+			}
+		}
+		sort.Strings(next)
+		frontier = next
+	}
+
+	return ports.Subgraph{Nodes: resNodes, Edges: resEdges, Truncated: truncated}, nil
 }
 
 func copyAttrs(m map[string]any) map[string]any {
