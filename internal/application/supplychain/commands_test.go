@@ -22,19 +22,23 @@ func (f *fakeGraphStore) GetNode(ctx context.Context, tenant ports.TenantID, nod
 	return n, nil
 }
 
-func (f *fakeGraphStore) Apply(ctx context.Context, tx ports.GraphMutation) (ports.Revision, error) { return 1, nil }
+func (f *fakeGraphStore) Apply(ctx context.Context, tx ports.GraphMutation) (ports.Revision, error) {
+	return 1, nil
+}
 func (f *fakeGraphStore) Neighborhood(ctx context.Context, q ports.NeighborhoodQuery) (ports.Subgraph, error) {
 	return ports.Subgraph{}, nil
 }
 func (f *fakeGraphStore) Traversal(ctx context.Context, q ports.TraversalQuery) (ports.Subgraph, error) {
 	return ports.Subgraph{}, nil
 }
-func (f *fakeGraphStore) Capabilities(ctx context.Context) ports.GraphCapabilities { return ports.GraphCapabilities{} }
+func (f *fakeGraphStore) Capabilities(ctx context.Context) ports.GraphCapabilities {
+	return ports.GraphCapabilities{}
+}
 
 // fakeSBOMParser implements ports.SBOMParser for tests.
 type fakeSBOMParser struct {
 	parsed ports.SBOMParsed
-	err   error
+	err    error
 }
 
 func (f *fakeSBOMParser) Parse(ctx context.Context, raw []byte) (ports.SBOMParsed, error) {
@@ -46,12 +50,12 @@ func (f *fakeSBOMParser) Parse(ctx context.Context, raw []byte) (ports.SBOMParse
 
 // fakeProvenanceVerifier implements ports.ProvenanceVerifier for tests.
 type fakeProvenanceVerifier struct {
-	subjOK     bool
-	subjReason string
-	builderOK  bool
+	subjOK        bool
+	subjReason    string
+	builderOK     bool
 	builderReason string
-	subjErr   error
-	builderErr error
+	subjErr       error
+	builderErr    error
 }
 
 func (f *fakeProvenanceVerifier) VerifySubject(ctx context.Context, statement []byte, digest string) (ports.ProvenanceVerification, error) {
@@ -61,8 +65,8 @@ func (f *fakeProvenanceVerifier) VerifySubject(ctx context.Context, statement []
 	return ports.ProvenanceVerification{
 		OK: f.subjOK,
 		Checks: []ports.CheckResult{{
-			Check: ports.CheckSubjectDigest,
-			OK: f.subjOK,
+			Check:  ports.CheckSubjectDigest,
+			OK:     f.subjOK,
 			Reason: f.subjReason,
 		}},
 	}, nil
@@ -75,8 +79,8 @@ func (f *fakeProvenanceVerifier) VerifyBuilder(ctx context.Context, statement []
 	return ports.ProvenanceVerification{
 		OK: f.builderOK,
 		Checks: []ports.CheckResult{{
-			Check: ports.CheckBuilderIdentity,
-			OK: f.builderOK,
+			Check:  ports.CheckBuilderIdentity,
+			OK:     f.builderOK,
 			Reason: f.builderReason,
 		}},
 	}, nil
@@ -101,10 +105,10 @@ func cmd(payload any) appcmd.Command {
 func TestIngestSBOMHandler_RejectsBadFormat(t *testing.T) {
 	h := IngestSBOMHandler(&fakeSBOMParser{})
 	_, err := h(context.Background(), cmd(IngestSBOM{
-		Provider:     "sbom-spdx",
+		Provider:      "sbom-spdx",
 		ExternalDocID: "doc-1",
-		FormatHint:  "invalid-format",
-		RawB64:      base64.StdEncoding.EncodeToString([]byte("{}")),
+		FormatHint:    "invalid-format",
+		RawB64:        base64.StdEncoding.EncodeToString([]byte("{}")),
 	}))
 	if err == nil {
 		t.Fatal("expected error for invalid format")
@@ -124,10 +128,10 @@ func TestIngestSBOMHandler_EmitsSBOMIngested(t *testing.T) {
 	})
 	raw := []byte(`{"name": "test"}`)
 	_, err := h(context.Background(), cmd(IngestSBOM{
-		Provider:     "sbom-spdx",
+		Provider:      "sbom-spdx",
 		ExternalDocID: "doc-1",
-		FormatHint:  "spdx-2.3",
-		RawB64:      base64.StdEncoding.EncodeToString(raw),
+		FormatHint:    "spdx-2.3",
+		RawB64:        base64.StdEncoding.EncodeToString(raw),
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -297,8 +301,8 @@ func TestIngestAttestationHandler_RejectsBadPredicate(t *testing.T) {
 	_, err := h(context.Background(), cmd(IngestAttestation{
 		ArtifactDigest: "sha256:abc123",
 		PredicateType:  "invalid-predicate",
-		StatementJSON: base64.StdEncoding.EncodeToString([]byte(`{}`)),
-		Provider:      "intoto",
+		StatementJSON:  base64.StdEncoding.EncodeToString([]byte(`{}`)),
+		Provider:       "intoto",
 	}))
 	if err == nil {
 		t.Fatal("expected error for invalid predicate type")
@@ -307,17 +311,17 @@ func TestIngestAttestationHandler_RejectsBadPredicate(t *testing.T) {
 
 func TestIngestAttestationHandler_VerificationStored(t *testing.T) {
 	h := IngestAttestationHandler(&fakeProvenanceVerifier{
-		subjOK:      true,
-		subjReason:  "ok",
-		builderOK:   true,
+		subjOK:        true,
+		subjReason:    "ok",
+		builderOK:     true,
 		builderReason: "ok",
 	})
 	stmt := []byte(`{"predicate":{"builder":{"id":"github-actions@v3"}}}`)
 	drafts, err := h(context.Background(), cmd(IngestAttestation{
 		ArtifactDigest: "sha256:abc123",
 		PredicateType:  "slsa-provenance",
-		StatementJSON: base64.StdEncoding.EncodeToString(stmt),
-		Provider:      "intoto",
+		StatementJSON:  base64.StdEncoding.EncodeToString(stmt),
+		Provider:       "intoto",
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -328,5 +332,3 @@ func TestIngestAttestationHandler_VerificationStored(t *testing.T) {
 	// Verification result stored in event is tested via the payload cast.
 	_ = drafts[0].Payload
 }
-
-

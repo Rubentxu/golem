@@ -6,7 +6,7 @@ package supplychain
 const (
 	KindSBOM             = "SBOM"
 	KindPackageComponent = "PackageComponent"
-	KindVulnerability     = "Vulnerability"
+	KindVulnerability    = "Vulnerability"
 	KindVEXStatement     = "VEXStatement"
 	KindAttestation      = "Attestation"
 )
@@ -14,35 +14,35 @@ const (
 // Relation type constants used in supply chain graph edges.
 // These belong to the canonical GOLEM ontology (GRAPH_MODEL).
 const (
-	RelationHAS_SBOM      = "HAS_SBOM"
-	RelationCONTAINS      = "CONTAINS"
-	RelationAFFECTED_BY   = "AFFECTED_BY"
-	RelationMITIGATED_BY  = "MITIGATED_BY"
-	RelationATTESTED_BY   = "ATTESTED_BY"
-	RelationSIGNED_BY     = "SIGNED_BY"
+	RelationHAS_SBOM     = "HAS_SBOM"
+	RelationCONTAINS     = "CONTAINS"
+	RelationAFFECTED_BY  = "AFFECTED_BY"
+	RelationMITIGATED_BY = "MITIGATED_BY"
+	RelationATTESTED_BY  = "ATTESTED_BY"
+	RelationSIGNED_BY    = "SIGNED_BY"
 )
 
 // Severity constants.
 const (
 	SeverityLow      = "low"
-	SeverityMedium    = "medium"
-	SeverityHigh      = "high"
-	SeverityCritical  = "critical"
+	SeverityMedium   = "medium"
+	SeverityHigh     = "high"
+	SeverityCritical = "critical"
 )
 
 // VulnerabilityStatus constants.
 const (
 	StatusOpen     = "open"
-	StatusFixed     = "fixed"
-	StatusDisputed  = "disputed"
+	StatusFixed    = "fixed"
+	StatusDisputed = "disputed"
 )
 
 // VEXStatus constants.
 const (
-	VEXStatusNotAffected    = "not_affected"
-	VEXStatusAffected       = "affected"
-	VEXStatusFixed          = "fixed"
-	VEXStatusInRemediation  = "in_remediation"
+	VEXStatusNotAffected   = "not_affected"
+	VEXStatusAffected      = "affected"
+	VEXStatusFixed         = "fixed"
+	VEXStatusInRemediation = "in_remediation"
 )
 
 // VerificationResult constants.

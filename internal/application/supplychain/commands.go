@@ -21,20 +21,20 @@ import (
 
 // Command names of this context.
 const (
-	CmdIngestSBOM           = "supplychain.ingest-sbom"
-	CmdReportVulnerability  = "supplychain.report-vulnerability"
+	CmdIngestSBOM          = "supplychain.ingest-sbom"
+	CmdReportVulnerability = "supplychain.report-vulnerability"
 	CmdRecordVEX           = "supplychain.record-vex"
-	CmdIngestAttestation    = "supplychain.ingest-attestation"
+	CmdIngestAttestation   = "supplychain.ingest-attestation"
 )
 
 // Domain validation errors.
 var (
-	ErrInvalidPurl       = errors.New("supplychain: invalid purl")
-	ErrInvalidVulnID     = errors.New("supplychain: invalid vulnerability id (must be CVE-YYYY-NNNNN or GHSA-xxxx-xxxx-xxxx)")
-	ErrInvalidVEXStatus  = errors.New("supplychain: invalid vex status (must be not_affected|affected|fixed|in_remediation)")
-	ErrInvalidProduct    = errors.New("supplychain: product not found in graph (must reference existing artifact digest or purl)")
+	ErrInvalidPurl        = errors.New("supplychain: invalid purl")
+	ErrInvalidVulnID      = errors.New("supplychain: invalid vulnerability id (must be CVE-YYYY-NNNNN or GHSA-xxxx-xxxx-xxxx)")
+	ErrInvalidVEXStatus   = errors.New("supplychain: invalid vex status (must be not_affected|affected|fixed|in_remediation)")
+	ErrInvalidProduct     = errors.New("supplychain: product not found in graph (must reference existing artifact digest or purl)")
 	ErrInvalidAttestation = errors.New("supplychain: invalid attestation (subject digest must be provided)")
-	ErrInvalidFormat     = errors.New("supplychain: invalid format (must be spdx-2.3|spdx-3.0|cyclonedx-1.5|cyclonedx-1.6)")
+	ErrInvalidFormat      = errors.New("supplychain: invalid format (must be spdx-2.3|spdx-3.0|cyclonedx-1.5|cyclonedx-1.6)")
 	ErrInvalidPredicate   = errors.New("supplychain: invalid predicate type (must be slsa-provenance|intoto-statement|intoto-link)")
 )
 
@@ -45,37 +45,37 @@ var (
 // The handler decodes, parses via the SBOMParser port, validates the
 // artifact digest, and emits supplychain.sbom.ingested.v1.
 type IngestSBOM struct {
-	Provider     string `json:"provider"`
+	Provider      string `json:"provider"`
 	ExternalDocID string `json:"external_doc_id"`
-	FormatHint   string `json:"format_hint"` // spdx-2.3 | spdx-3.0 | cyclonedx-1.5 | cyclonedx-1.6
-	RawB64       string `json:"raw_b64"`      // base64-encoded SBOM document
+	FormatHint    string `json:"format_hint"` // spdx-2.3 | spdx-3.0 | cyclonedx-1.5 | cyclonedx-1.6
+	RawB64        string `json:"raw_b64"`     // base64-encoded SBOM document
 }
 
 // ReportVulnerability is the payload of CmdReportVulnerability.
 type ReportVulnerability struct {
-	VulnID        string   `json:"vuln_id"`
-	Severity      string   `json:"severity"`       // low|medium|high|critical
-	Status        string   `json:"status"`         // open|fixed|disputed
-	ComponentPurl string   `json:"component_purl"`
-	Provider      string   `json:"provider"`
+	VulnID        string `json:"vuln_id"`
+	Severity      string `json:"severity"` // low|medium|high|critical
+	Status        string `json:"status"`   // open|fixed|disputed
+	ComponentPurl string `json:"component_purl"`
+	Provider      string `json:"provider"`
 }
 
 // RecordVEX is the payload of CmdRecordVEX.
 type RecordVEX struct {
-	StatementID    string `json:"statement_id"`
-	VulnID         string `json:"vuln_id"`
-	ProductDigest  string `json:"product_digest,omitempty"`
-	ProductPurl    string `json:"product_purl,omitempty"`
-	Status         string `json:"status"` // not_affected|affected|fixed|in_remediation
-	Justification  string `json:"justification"`
-	Provider       string `json:"provider"`
+	StatementID   string `json:"statement_id"`
+	VulnID        string `json:"vuln_id"`
+	ProductDigest string `json:"product_digest,omitempty"`
+	ProductPurl   string `json:"product_purl,omitempty"`
+	Status        string `json:"status"` // not_affected|affected|fixed|in_remediation
+	Justification string `json:"justification"`
+	Provider      string `json:"provider"`
 }
 
 // IngestAttestation is the payload of CmdIngestAttestation.
 type IngestAttestation struct {
 	ArtifactDigest string `json:"artifact_digest"`
 	PredicateType  string `json:"predicate_type"` // slsa-provenance|intoto-statement|intoto-link
-	StatementJSON  string `json:"statement_json"`  // base64-encoded in-toto statement
+	StatementJSON  string `json:"statement_json"` // base64-encoded in-toto statement
 	Provider       string `json:"provider"`
 }
 
@@ -86,14 +86,14 @@ var (
 	ghsaPattern    = regexp.MustCompile(`^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$`)
 	validFormats   = map[string]bool{"spdx-2.3": true, "spdx-3.0": true, "cyclonedx-1.5": true, "cyclonedx-1.6": true}
 	validVEXStatus = map[string]bool{
-		domainsupplychain.VEXStatusNotAffected: true,
-		domainsupplychain.VEXStatusAffected:    true,
-		domainsupplychain.VEXStatusFixed:      true,
+		domainsupplychain.VEXStatusNotAffected:   true,
+		domainsupplychain.VEXStatusAffected:      true,
+		domainsupplychain.VEXStatusFixed:         true,
 		domainsupplychain.VEXStatusInRemediation: true,
 	}
 	validPredicate = map[string]bool{
-		"slsa-provenance":   true,
-		"intoto-statement":  true,
+		"slsa-provenance":  true,
+		"intoto-statement": true,
 		"intoto-link":      true,
 	}
 )
@@ -175,7 +175,7 @@ func IngestSBOMHandler(parser ports.SBOMParser) appcmd.Handler {
 				ArtifactDigest: parsed.ArtifactDigest,
 				Components:     components,
 				SourceProvider: p.Provider,
-				SourceDocID:   p.ExternalDocID,
+				SourceDocID:    p.ExternalDocID,
 			},
 		}}, nil
 	}
@@ -281,11 +281,11 @@ func RecordVEXHandler(graph ports.GraphStore) appcmd.Handler {
 			StreamID:      streamID,
 			SchemaVersion: 1,
 			Payload: domainsupplychain.VEXStatementRecorded{
-				StatementID:    p.StatementID,
-				VulnID:         p.VulnID,
-				ProductDigest:  p.ProductDigest,
-				ProductPurl:    p.ProductPurl,
-				Status:         p.Status,
+				StatementID:   p.StatementID,
+				VulnID:        p.VulnID,
+				ProductDigest: p.ProductDigest,
+				ProductPurl:   p.ProductPurl,
+				Status:        p.Status,
 				Justification: p.Justification,
 				Provider:      p.Provider,
 			},
@@ -362,13 +362,13 @@ func IngestAttestationHandler(provVerifier ports.ProvenanceVerifier) appcmd.Hand
 			StreamID:      streamID,
 			SchemaVersion: 1,
 			Payload: domainsupplychain.AttestationIngested{
-				AttestationID:     attID,
-				ArtifactDigest:    p.ArtifactDigest,
-				PredicateType:     p.PredicateType,
-				BuilderID:         builderID,
+				AttestationID:      attID,
+				ArtifactDigest:     p.ArtifactDigest,
+				PredicateType:      p.PredicateType,
+				BuilderID:          builderID,
 				VerificationResult: verResult,
 				VerificationReason: verReason,
-				Statement:        rawMsg,
+				Statement:          rawMsg,
 			},
 		}}, nil
 	}

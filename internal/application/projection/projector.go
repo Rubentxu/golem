@@ -26,22 +26,22 @@ import (
 
 // NodeKind constants used by the kernel projection.
 const (
-	KindWorkItem          = "WorkItem"
-	KindRequirement       = "Requirement"
-	KindWorkType          = "WorkType"
-	KindProject           = "Project"
-	KindIteration         = "Iteration"
-	KindMilestone         = "Milestone"
-	KindCommit            = "Commit"
-	KindBuild             = "Build"
-	KindArtifact          = "Artifact"
-	KindTestRun           = "TestRun"
-	KindRelease           = "Release"
-	KindSBOM              = supplychain.KindSBOM
-	KindPackageComponent  = supplychain.KindPackageComponent
-	KindVulnerability     = supplychain.KindVulnerability
-	KindVEXStatement      = supplychain.KindVEXStatement
-	KindAttestation       = supplychain.KindAttestation
+	KindWorkItem         = "WorkItem"
+	KindRequirement      = "Requirement"
+	KindWorkType         = "WorkType"
+	KindProject          = "Project"
+	KindIteration        = "Iteration"
+	KindMilestone        = "Milestone"
+	KindCommit           = "Commit"
+	KindBuild            = "Build"
+	KindArtifact         = "Artifact"
+	KindTestRun          = "TestRun"
+	KindRelease          = "Release"
+	KindSBOM             = supplychain.KindSBOM
+	KindPackageComponent = supplychain.KindPackageComponent
+	KindVulnerability    = supplychain.KindVulnerability
+	KindVEXStatement     = supplychain.KindVEXStatement
+	KindAttestation      = supplychain.KindAttestation
 )
 
 // Projector maps journal events to graph mutations. Unknown event types
@@ -208,8 +208,8 @@ func (Projector) Project(env ports.RawEvent) (ports.GraphMutation, error) {
 		if err := json.Unmarshal(env.Payload, &p); err != nil {
 			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
 		}
-		if p.ReleaseID == "" || len(p.Artifacts) == 0 {
-			return m, fmt.Errorf("projection %s: release_id and artifacts are mandatory", env.EventType)
+		if p.ReleaseID == "" {
+			return m, fmt.Errorf("projection %s: release_id is mandatory", env.EventType)
 		}
 		artifacts := make([]any, 0, len(p.Artifacts))
 		for _, a := range p.Artifacts {
@@ -280,7 +280,8 @@ func (Projector) Project(env ports.RawEvent) (ports.GraphMutation, error) {
 		supplychain.EventAttestationIngested:
 		// Supply chain events may produce >500 ops (SBOM with many components).
 		// Project returns the first chunk; ProjectAll returns all chunks.
-		m, err := projectSingle(env)
+		var err error
+		m, err = projectSingle(env)
 		if err != nil {
 			return m, err
 		}
@@ -650,14 +651,16 @@ func projectSBOMIngested(env ports.RawEvent) (ports.GraphMutation, error) {
 
 	// SBOM node.
 	sbomAttrs := map[string]any{
-		"format":        p.Format,
-		"spec_version":  p.SpecVersion,
+		"format":          p.Format,
+		"spec_version":    p.SpecVersion,
 		"source_provider": p.SourceProvider,
-		"source_doc_id": p.SourceDocID,
+		"source_doc_id":   p.SourceDocID,
 	}
 	m.Ops = append(m.Ops, nodeUpsert(p.SBOMID, KindSBOM, sbomAttrs))
 
 	// HAS_SBOM edge: Artifact → SBOM.
+	// Use p.ArtifactDigest as-is (sha256:...) to match the Artifact node ID
+	// used by the CI projector (artifact nodes are stored with digest as ID).
 	m.Ops = append(m.Ops, edgeUpsert(
 		edgeID(env.EventID, "hassbom", 0),
 		supplychain.RelationHAS_SBOM,
@@ -734,12 +737,12 @@ func projectVEXStatement(env ports.RawEvent) (ports.GraphMutation, error) {
 	}
 
 	vexAttrs := map[string]any{
-		"vuln_id":      p.VulnID,
+		"vuln_id":        p.VulnID,
 		"product_digest": p.ProductDigest,
-		"product_purl":  p.ProductPurl,
-		"status":        p.Status,
-		"justification": p.Justification,
-		"provider":      p.Provider,
+		"product_purl":   p.ProductPurl,
+		"status":         p.Status,
+		"justification":  p.Justification,
+		"provider":       p.Provider,
 	}
 	m.Ops = append(m.Ops, nodeUpsert(p.StatementID, KindVEXStatement, vexAttrs))
 
@@ -773,10 +776,10 @@ func projectAttestationIngested(env ports.RawEvent) (ports.GraphMutation, error)
 	}
 
 	attAttrs := map[string]any{
-		"predicate_type":        p.PredicateType,
-		"builder_id":            p.BuilderID,
-		"verification_result":   p.VerificationResult,
-		"verification_reason":   p.VerificationReason,
+		"predicate_type":      p.PredicateType,
+		"builder_id":          p.BuilderID,
+		"verification_result": p.VerificationResult,
+		"verification_reason": p.VerificationReason,
 	}
 	m.Ops = append(m.Ops, nodeUpsert(p.AttestationID, KindAttestation, attAttrs))
 
@@ -786,9 +789,9 @@ func projectAttestationIngested(env ports.RawEvent) (ports.GraphMutation, error)
 		supplychain.RelationATTESTED_BY,
 		p.ArtifactDigest, p.AttestationID,
 		map[string]any{
-			"source_event":          env.EventID,
-			"verification_result":   p.VerificationResult,
-			"verification_reason":   p.VerificationReason,
+			"source_event":        env.EventID,
+			"verification_result": p.VerificationResult,
+			"verification_reason": p.VerificationReason,
 		},
 	))
 

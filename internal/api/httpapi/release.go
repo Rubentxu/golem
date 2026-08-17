@@ -5,9 +5,11 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/Rubentxu/golem/internal/application/ingest"
 	apprelease "github.com/Rubentxu/golem/internal/application/release"
+	"github.com/Rubentxu/golem/internal/application/supplychain"
 	"github.com/Rubentxu/golem/internal/ports"
 )
 
@@ -109,4 +111,37 @@ func (s *Server) handleGetRelease(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": n.ID, "kind": n.Kind, "attributes": n.Attributes,
 	})
+}
+
+// ---- GET /api/v1/components/{purl}/blast-radius ----
+
+func (s *Server) handleBlastRadius(w http.ResponseWriter, r *http.Request) {
+	corr := s.correlationOf(r)
+	tenant, _, ok := tenantActor(r)
+	if !ok {
+		s.problem(w, http.StatusBadRequest, CodeMissingTenant, "X-Golem-Tenant header is mandatory", corr)
+		return
+	}
+	purl := r.PathValue("purl")
+	if purl == "" {
+		s.problem(w, http.StatusBadRequest, CodeInvalidArgument, "purl path parameter is mandatory", corr)
+		return
+	}
+	// URL decode the purl (http.Route decode is available in Go 1.22+).
+	decoded, err := url.PathUnescape(purl)
+	if err != nil {
+		s.problem(w, http.StatusBadRequest, CodeInvalidArgument, "invalid purl encoding", corr)
+		return
+	}
+
+	result, err := supplychain.BlastRadius(r.Context(), s.graph, tenant, decoded)
+	if err != nil {
+		if errors.Is(err, supplychain.ErrInvalidPurlForBlast) {
+			s.problem(w, http.StatusUnprocessableEntity, CodeDomainRejection, "unknown component: "+url.QueryEscape(decoded), corr)
+			return
+		}
+		s.problem(w, http.StatusInternalServerError, CodeInternal, "blast radius query failed", corr)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }

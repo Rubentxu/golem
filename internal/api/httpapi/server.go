@@ -106,6 +106,7 @@ type CommandSubmitter interface {
 // bounded neighborhood queries.
 type GraphReader interface {
 	Neighborhood(ctx context.Context, q ports.NeighborhoodQuery) (ports.Subgraph, error)
+	Traversal(ctx context.Context, q ports.TraversalQuery) (ports.Subgraph, error)
 	GetNode(ctx context.Context, tenant ports.TenantID, nodeID string) (ports.Node, error)
 }
 
@@ -125,7 +126,7 @@ type StreamVersionReader interface {
 // Server builds the HTTP handler from the submitted dependencies.
 type Server struct {
 	commands CommandSubmitter
-	graph    GraphReader
+	graph    ports.GraphStore
 	streams  StreamVersionReader
 	search   SearchReader
 	ingest   IngestService
@@ -137,7 +138,7 @@ type Server struct {
 
 // New creates the edge server. Observability is optional (zero value =
 // no-ops).
-func New(commands CommandSubmitter, graph GraphReader, streams StreamVersionReader) *Server {
+func New(commands CommandSubmitter, graph ports.GraphStore, streams StreamVersionReader) *Server {
 	return &Server{commands: commands, graph: graph, streams: streams, obs: obs.Fill(ports.Observability{})}
 }
 
@@ -196,6 +197,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/releases", s.handleCreateRelease)
 	mux.HandleFunc("POST /api/v1/releases/{id}/gate", s.handleEvaluateGate)
 	mux.HandleFunc("GET /api/v1/releases/{id}", s.handleGetRelease)
+	mux.HandleFunc("GET /api/v1/components/{purl}/blast-radius", s.handleBlastRadius)
 	return mux
 }
 
@@ -294,6 +296,7 @@ func muxMatch(r *http.Request) (bool, string) {
 		{http.MethodPost, "/api/v1/releases"},
 		{http.MethodPost, "/api/v1/releases/{id}/gate"},
 		{http.MethodGet, "/api/v1/releases/{id}"},
+		{http.MethodGet, "/api/v1/components/{purl}/blast-radius"},
 	}
 	for _, rt := range routes {
 		if r.Method == rt.method {

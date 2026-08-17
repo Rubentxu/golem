@@ -25,9 +25,10 @@ func (f *fakeCommands) Submit(_ context.Context, cmd command.Command) (ports.Com
 }
 
 type fakeGraph struct {
-	query ports.NeighborhoodQuery
-	sub   ports.Subgraph
-	err   error
+	query   ports.NeighborhoodQuery
+	sub     ports.Subgraph
+	err     error
+	applyFn func(ports.GraphMutation) (ports.Revision, error)
 }
 
 func (f *fakeGraph) Neighborhood(_ context.Context, q ports.NeighborhoodQuery) (ports.Subgraph, error) {
@@ -44,6 +45,17 @@ func (f *fakeGraph) GetNode(_ context.Context, _ ports.TenantID, _ string) (port
 		return ports.Node{}, ports.ErrNodeNotFound
 	}
 	return f.sub.Nodes[0], nil
+}
+
+func (f *fakeGraph) Apply(_ context.Context, tx ports.GraphMutation) (ports.Revision, error) {
+	if f.applyFn != nil {
+		return f.applyFn(tx)
+	}
+	return 1, nil
+}
+
+func (f *fakeGraph) Capabilities(_ context.Context) ports.GraphCapabilities {
+	return ports.GraphCapabilities{Transactions: true, EdgeProperties: true}
 }
 
 type fakeStreams struct {

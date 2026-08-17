@@ -228,10 +228,10 @@ func (SBOMSPDX) Translate(payload []byte) ([]IngestedCommand, error) {
 		Name:      appsupplychain.CmdIngestSBOM,
 		CommandID: "ingest.sbom-spdx.doc." + p.ExternalID,
 		Payload: appsupplychain.IngestSBOM{
-			Provider:     "sbom-spdx",
+			Provider:      "sbom-spdx",
 			ExternalDocID: p.ExternalID,
-			FormatHint:  "spdx-2.3",
-			RawB64:      p.RawB64,
+			FormatHint:    "spdx-2.3",
+			RawB64:        p.RawB64,
 		},
 	}}, nil
 }
@@ -269,10 +269,10 @@ func (SBOMCycloneDX) Translate(payload []byte) ([]IngestedCommand, error) {
 		Name:      appsupplychain.CmdIngestSBOM,
 		CommandID: "ingest.sbom-cyclonedx.doc." + p.ExternalID,
 		Payload: appsupplychain.IngestSBOM{
-			Provider:     "sbom-cyclonedx",
+			Provider:      "sbom-cyclonedx",
 			ExternalDocID: p.ExternalID,
-			FormatHint:  "cyclonedx-1.5",
-			RawB64:      p.RawB64,
+			FormatHint:    "cyclonedx-1.5",
+			RawB64:        p.RawB64,
 		},
 	}}, nil
 }
@@ -310,8 +310,8 @@ func (AttestationInToto) Translate(payload []byte) ([]IngestedCommand, error) {
 		Payload: appsupplychain.IngestAttestation{
 			ArtifactDigest: p.SubjectDigest,
 			PredicateType:  p.PredicateType,
-			StatementJSON: p.StatementB64,
-			Provider:      p.Provider,
+			StatementJSON:  p.StatementB64,
+			Provider:       p.Provider,
 		},
 	}}, nil
 }
@@ -326,15 +326,15 @@ type VEXOpenVEX struct{}
 func (VEXOpenVEX) Provider() string { return "vex-openvex" }
 
 type vexOpenVEXPayload struct {
-	DocID     string `json:"doc_id"`
+	DocID      string `json:"doc_id"`
 	Statements []struct {
-		ID           string `json:"id"`
-		VulnID      string `json:"vuln_id"`
-		Status       string `json:"status"`
+		ID            string `json:"id"`
+		VulnID        string `json:"vuln_id"`
+		Status        string `json:"status"`
 		Justification string `json:"justification,omitempty"`
-		Product      struct {
+		Product       struct {
 			Identifier string `json:"identifier"` // artifact digest or purl
-			Type       string `json:"type"`      // "artifact" or "purl"
+			Type       string `json:"type"`       // "artifact" or "purl"
 		} `json:"product"`
 		Provider string `json:"provider"`
 	} `json:"statements"`
@@ -349,7 +349,7 @@ func (VEXOpenVEX) Translate(payload []byte) ([]IngestedCommand, error) {
 	if p.DocID == "" {
 		return nil, errors.New("ingest vex-openvex: doc_id is mandatory")
 	}
-		out := make([]IngestedCommand, 0, len(p.Statements))
+	out := make([]IngestedCommand, 0, len(p.Statements))
 	for i, stmt := range p.Statements {
 		if stmt.ID == "" || stmt.VulnID == "" {
 			continue
