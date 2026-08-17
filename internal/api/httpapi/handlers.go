@@ -34,7 +34,7 @@ func (s *Server) handleGetRequirement(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetEntity(w http.ResponseWriter, r *http.Request, streamPrefix string) {
-	corr := r.Header.Get("X-Correlation-Id")
+	corr := s.correlationOf(r)
 	tenant, _, ok := tenantActor(r)
 	if !ok {
 		s.problem(w, http.StatusBadRequest, CodeMissingTenant, "X-Golem-Tenant header is mandatory", corr)
@@ -76,7 +76,7 @@ type updateWorkItemBody struct {
 }
 
 func (s *Server) handleUpdateWorkItem(w http.ResponseWriter, r *http.Request) {
-	corr := r.Header.Get("X-Correlation-Id")
+	corr := s.correlationOf(r)
 	tenant, actor, ok := tenantActor(r)
 	if !ok {
 		s.problem(w, http.StatusBadRequest, CodeMissingTenant, "X-Golem-Tenant header is mandatory", corr)
@@ -148,7 +148,7 @@ type linkBody struct {
 }
 
 func (s *Server) handleLinkWorkItem(w http.ResponseWriter, r *http.Request) {
-	corr := r.Header.Get("X-Correlation-Id")
+	corr := s.correlationOf(r)
 	tenant, actor, ok := tenantActor(r)
 	if !ok {
 		s.problem(w, http.StatusBadRequest, CodeMissingTenant, "X-Golem-Tenant header is mandatory", corr)
@@ -198,7 +198,7 @@ type createRequirementBody struct {
 }
 
 func (s *Server) handleCreateRequirement(w http.ResponseWriter, r *http.Request) {
-	corr := r.Header.Get("X-Correlation-Id")
+	corr := s.correlationOf(r)
 	tenant, actor, ok := tenantActor(r)
 	if !ok {
 		s.problem(w, http.StatusBadRequest, CodeMissingTenant, "X-Golem-Tenant header is mandatory", corr)

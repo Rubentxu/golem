@@ -12,6 +12,7 @@ import (
 	checkpointmem "github.com/Rubentxu/golem/adapters/checkpoint/memstore"
 	graphmem "github.com/Rubentxu/golem/adapters/graph/memstore"
 	journalmem "github.com/Rubentxu/golem/adapters/journal/memstore"
+	otelobs "github.com/Rubentxu/golem/adapters/observability/otel"
 	registrymem "github.com/Rubentxu/golem/adapters/registry/memstore"
 	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
 	"github.com/Rubentxu/golem/internal/api/httpapi"
@@ -27,12 +28,19 @@ import (
 // demo; provider profiles (durable journal, NATS transport) arrive with
 // the M5 Provider Profile mechanism.
 func main() {
+	obsbundle, shutdownObs, err := otelobs.Setup(context.Background(), "golem-api", "0.1.0")
+	if err != nil {
+		log.Fatalf("observability setup: %v", err)
+	}
+	defer func() { _ = shutdownObs(context.Background()) }()
+
 	rt, err := runtime.New(runtime.Options{
 		Journal:    journalmem.NewJournal(),
 		Graph:      graphmem.NewGraph(),
 		Registry:   registrymem.NewRegistry(),
 		Transport:  transportmem.NewTransport(),
 		Checkpoint: checkpointmem.NewCheckpoints(),
+		Obs:        obsbundle,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -59,7 +67,7 @@ func main() {
 	}
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           httpapi.New(rt.Bus, rt.Graph, rt.Journal).Handler(),
+		Handler:           httpapi.New(rt.Bus, rt.Graph, rt.Journal).WithObservability(obsbundle).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

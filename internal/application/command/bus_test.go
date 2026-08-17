@@ -72,6 +72,9 @@ func (f journalFunc) ReadStream(ctx context.Context, _ ports.TenantID, _ string,
 func (f journalFunc) Replay(ctx context.Context, _ ports.StreamPosition, _ int) ([]ports.RawEvent, ports.StreamPosition, error) {
 	return nil, 0, nil
 }
+func (f journalFunc) Head(context.Context) (ports.StreamPosition, error) {
+	return 0, nil
+}
 
 var okHandler Handler = func(_ context.Context, _ Command) ([]EventDraft, error) {
 	return []EventDraft{{

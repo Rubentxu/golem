@@ -120,8 +120,10 @@ func TestCreateWorkItemHappyPath(t *testing.T) {
 	if cmds.got.TenantID != "t1" || cmds.got.Actor.ID != "anonymous" {
 		t.Fatalf("command wiring = %+v", cmds.got)
 	}
-	if cmds.got.CorrelationID != "corr-1" && cmds.got.CorrelationID != "" {
-		t.Fatalf("unexpected correlation: %q", cmds.got.CorrelationID)
+	// Correlation is generated when the client sends none and must
+	// propagate to the command (OBSERVABILITY.md correlation chain).
+	if cmds.got.CorrelationID == "" {
+		t.Fatal("correlation id not generated/propagated to the command")
 	}
 }
 

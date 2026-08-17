@@ -145,6 +145,20 @@ func RunJournalStoreTCK(t *testing.T, newStore func() ports.JournalStore) {
 		}
 	})
 
+	t.Run("head exposes the newest position", func(t *testing.T) {
+		s := newStore()
+		ctx := context.Background()
+		if h, err := s.Head(ctx); err != nil || h != 0 {
+			t.Fatalf("empty head = %d, %v; want 0", h, err)
+		}
+		if _, err := s.Append(ctx, []ports.RawEvent{mk(1), mk(2)}); err != nil {
+			t.Fatal(err)
+		}
+		if h, err := s.Head(ctx); err != nil || h != 2 {
+			t.Fatalf("head = %d, %v; want 2", h, err)
+		}
+	})
+
 	t.Run("conditional append enforces optimistic concurrency", func(t *testing.T) {
 		s := newStore()
 		ctx := context.Background()

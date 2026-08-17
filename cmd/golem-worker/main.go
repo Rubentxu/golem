@@ -20,18 +20,26 @@ import (
 	checkpointmem "github.com/Rubentxu/golem/adapters/checkpoint/memstore"
 	graphmem "github.com/Rubentxu/golem/adapters/graph/memstore"
 	journalmem "github.com/Rubentxu/golem/adapters/journal/memstore"
+	otelobs "github.com/Rubentxu/golem/adapters/observability/otel"
 	registrymem "github.com/Rubentxu/golem/adapters/registry/memstore"
 	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
 	"github.com/Rubentxu/golem/internal/application/runtime"
 )
 
 func main() {
+	obsbundle, shutdownObs, err := otelobs.Setup(context.Background(), "golem-worker", "0.1.0")
+	if err != nil {
+		log.Fatalf("observability setup: %v", err)
+	}
+	defer func() { _ = shutdownObs(context.Background()) }()
+
 	rt, err := runtime.New(runtime.Options{
 		Journal:    journalmem.NewJournal(),
 		Graph:      graphmem.NewGraph(),
 		Registry:   registrymem.NewRegistry(),
 		Transport:  transportmem.NewTransport(),
 		Checkpoint: checkpointmem.NewCheckpoints(),
+		Obs:        obsbundle,
 	})
 	if err != nil {
 		log.Fatal(err)

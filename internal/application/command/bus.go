@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Rubentxu/golem/internal/obs"
 	"github.com/Rubentxu/golem/internal/ports"
 )
 
@@ -66,6 +67,7 @@ type Bus struct {
 	registry ports.CommandRegistry
 	ids      ports.IDGenerator
 	clock    ports.Clock
+	obs      ports.Observability
 
 	mu       sync.RWMutex
 	handlers map[string]Handler
@@ -78,8 +80,15 @@ func NewBus(journal ports.JournalStore, registry ports.CommandRegistry, ids port
 		registry: registry,
 		ids:      ids,
 		clock:    clock,
+		obs:      obs.Fill(ports.Observability{}),
 		handlers: map[string]Handler{},
 	}
+}
+
+// WithObservability sets the instrumentation bundle (chaining).
+func (b *Bus) WithObservability(o ports.Observability) *Bus {
+	b.obs = obs.Fill(o)
+	return b
 }
 
 // Register binds a handler to a command name. Registering twice replaces
@@ -112,6 +121,38 @@ func (b *Bus) Submit(ctx context.Context, cmd Command) (ports.CommandReceipt, er
 	if correlation == "" {
 		correlation = b.ids.NewID()
 	}
+
+	// Correlation + trace path start here (OBSERVABILITY.md:
+	// Command → Journal → outbox → projection).
+	ctx = ports.WithCorrelation(ctx, ports.Correlation{
+		CorrelationID: correlation,
+		TenantID:      string(cmd.TenantID),
+		ActorType:     cmd.Actor.Type,
+		ActorID:       cmd.Actor.ID,
+		CommandID:     commandID,
+	})
+	ctx, span := b.obs.Tracer.Start(ctx, "golem.command.Submit", ports.A("command", cmd.Name))
+
+	var receipt ports.CommandReceipt
+	var err error
+	defer func() { span.End(err) }()
+
+	receipt, err = b.submit(ctx, cmd, commandID, correlation)
+	if err != nil {
+		b.obs.Logger.Error(ctx, "command rejected", ports.A("command", cmd.Name), ports.A("error", err.Error()))
+		b.obs.Meter.Counter("golem.commands").Add(ctx, 1, ports.A("result", "rejected"))
+		return ports.CommandReceipt{}, err
+	}
+	if receipt.Duplicate {
+		b.obs.Meter.Counter("golem.commands").Add(ctx, 1, ports.A("result", "duplicate"))
+	} else {
+		b.obs.Logger.Info(ctx, "command accepted", ports.A("command", cmd.Name), ports.A("position", int64(receipt.Position)))
+		b.obs.Meter.Counter("golem.commands").Add(ctx, 1, ports.A("result", "accepted"))
+	}
+	return receipt, nil
+}
+
+func (b *Bus) submit(ctx context.Context, cmd Command, commandID, correlation string) (ports.CommandReceipt, error) {
 
 	// Idempotent replay: a known command returns its stored receipt.
 	if receipt, found, err := b.registry.Find(ctx, commandID); err != nil {

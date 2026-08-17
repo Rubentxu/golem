@@ -24,9 +24,13 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/Rubentxu/golem/internal/application/command"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
+	"github.com/Rubentxu/golem/internal/clock"
+	"github.com/Rubentxu/golem/internal/ids"
+	"github.com/Rubentxu/golem/internal/obs"
 	"github.com/Rubentxu/golem/internal/ports"
 )
 
@@ -117,15 +121,32 @@ type Server struct {
 	commands CommandSubmitter
 	graph    GraphReader
 	streams  StreamVersionReader
+	obs      ports.Observability
+
+	idsOnce sync.Once
+	idgen   ports.IDGenerator
 }
 
-// New creates the edge server.
+// New creates the edge server. Observability is optional (zero value =
+// no-ops).
 func New(commands CommandSubmitter, graph GraphReader, streams StreamVersionReader) *Server {
-	return &Server{commands: commands, graph: graph, streams: streams}
+	return &Server{commands: commands, graph: graph, streams: streams, obs: obs.Fill(ports.Observability{})}
 }
 
-// Handler returns the routed handler.
+// WithObservability sets the instrumentation bundle (chaining).
+func (s *Server) WithObservability(o ports.Observability) *Server {
+	s.obs = obs.Fill(o)
+	return s
+}
+
+// Handler returns the routed handler wrapped with the observability
+// middleware: correlation propagation (X-Correlation-Id, generated when
+// absent), request spans and status metrics.
 func (s *Server) Handler() http.Handler {
+	return s.middleware(s.routes())
+}
+
+func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -138,6 +159,115 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/requirements/{id}", s.handleGetRequirement)
 	mux.HandleFunc("POST /api/v1/graph/neighborhood", s.handleNeighborhood)
 	return mux
+}
+
+// middleware propagates correlation, traces each request and records
+// http.server.request counters by method/route-template/status (tenant
+// is deliberately absent from metric attributes: cardinality,
+// OBSERVABILITY.md).
+func (s *Server) middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		corr := strings.TrimSpace(r.Header.Get("X-Correlation-Id"))
+		if corr == "" {
+			corr = s.ids().NewID()
+		}
+		tenant := strings.TrimSpace(r.Header.Get("X-Golem-Tenant"))
+		actorType, actorID := strings.TrimSpace(r.Header.Get("X-Golem-Actor-Type")), strings.TrimSpace(r.Header.Get("X-Golem-Actor-Id"))
+		if actorType == "" || actorID == "" {
+			actorType, actorID = "user", "anonymous"
+		}
+
+		r = r.WithContext(ports.WithCorrelation(r.Context(), ports.Correlation{
+			CorrelationID: corr,
+			TenantID:      tenant,
+			ActorType:     actorType,
+			ActorID:       actorID,
+		}))
+		// Handlers echo the correlation id in bodies and headers.
+		w.Header().Set("X-Correlation-Id", corr)
+
+		route := "unmatched"
+		if match, pat := muxMatch(r); match {
+			route = pat
+		}
+		ctx, span := s.obs.Tracer.Start(r.Context(), "golem.http.request",
+			ports.A("http.method", r.Method), ports.A("http.route", route))
+		defer span.End(nil)
+
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r.WithContext(ctx))
+
+		s.obs.Meter.Counter("golem.http.requests").Add(ctx, 1,
+			ports.A("method", r.Method), ports.A("route", route), ports.A("status", int64(rec.status)))
+		if rec.status >= 500 {
+			s.obs.Logger.Error(ctx, "request failed",
+				ports.A("status", int64(rec.status)), ports.A("route", route))
+		}
+	})
+}
+
+// ids lazily builds an id generator for correlation fallbacks.
+func (s *Server) ids() ports.IDGenerator {
+	s.idsOnce.Do(func() {
+		if s.idgen == nil {
+			s.idgen = ids.NewGenerator(clock.SystemClock{})
+		}
+	})
+	return s.idgen
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+// muxMatch reports the ServeMux pattern the request would match. With
+// Go 1.22+ net/http the mux does not expose pattern lookup, so the edge
+// keeps its own route table.
+func muxMatch(r *http.Request) (bool, string) {
+	routes := []struct{ method, pattern string }{
+		{http.MethodGet, "/healthz"},
+		{http.MethodPost, "/api/v1/work-items"},
+		{http.MethodGet, "/api/v1/work-items/{id}"},
+		{http.MethodPatch, "/api/v1/work-items/{id}"},
+		{http.MethodPost, "/api/v1/work-items/{id}/links"},
+		{http.MethodPost, "/api/v1/requirements"},
+		{http.MethodGet, "/api/v1/requirements/{id}"},
+		{http.MethodPost, "/api/v1/graph/neighborhood"},
+	}
+	for _, rt := range routes {
+		if r.Method == rt.method {
+			if _, ok := routeMatches(rt.pattern, r.URL.Path); ok {
+				return true, rt.pattern
+			}
+		}
+	}
+	return false, ""
+}
+
+// routeMatches checks a {param} pattern against a concrete path.
+func routeMatches(pattern, path string) (map[string]string, bool) {
+	pp := strings.Split(strings.Trim(pattern, "/"), "/")
+	cp := strings.Split(strings.Trim(path, "/"), "/")
+	if len(pp) != len(cp) {
+		return nil, false
+	}
+	params := map[string]string{}
+	for i := range pp {
+		if strings.HasPrefix(pp[i], "{") && strings.HasSuffix(pp[i], "}") {
+			params[pp[i][1:len(pp[i])-1]] = cp[i]
+			continue
+		}
+		if pp[i] != cp[i] {
+			return nil, false
+		}
+	}
+	return params, true
 }
 
 // ---- helpers ----
@@ -177,6 +307,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
+// correlationOf returns the request correlation id: the ctx value set
+// by the middleware (generated when the client sent none).
+func (s *Server) correlationOf(r *http.Request) string {
+	if c, ok := ports.CorrelationFrom(r.Context()); ok {
+		return c.CorrelationID
+	}
+	return strings.TrimSpace(r.Header.Get("X-Correlation-Id"))
+}
+
 // decodeBody decodes a JSON request body with a 1 MiB guard.
 func decodeBody(w http.ResponseWriter, r *http.Request, v any) error {
 	return json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(v)
@@ -190,7 +329,7 @@ type createWorkItemBody struct {
 }
 
 func (s *Server) handleCreateWorkItem(w http.ResponseWriter, r *http.Request) {
-	corr := r.Header.Get("X-Correlation-Id")
+	corr := s.correlationOf(r)
 
 	tenant, actor, ok := tenantActor(r)
 	if !ok {
@@ -236,7 +375,7 @@ func (s *Server) handleCreateWorkItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleNeighborhood(w http.ResponseWriter, r *http.Request) {
-	corr := r.Header.Get("X-Correlation-Id")
+	corr := s.correlationOf(r)
 
 	tenant, _, ok := tenantActor(r)
 	if !ok {

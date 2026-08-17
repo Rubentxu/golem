@@ -27,6 +27,7 @@ import (
 	"github.com/Rubentxu/golem/internal/application/projection"
 	"github.com/Rubentxu/golem/internal/clock"
 	"github.com/Rubentxu/golem/internal/ids"
+	"github.com/Rubentxu/golem/internal/obs"
 	"github.com/Rubentxu/golem/internal/ports"
 )
 
@@ -51,11 +52,13 @@ type Runtime struct {
 	Projector  projection.Projector
 	Clock      ports.Clock
 	IDs        ports.IDGenerator
+	obs        ports.Observability
 }
 
 // Options wires a Runtime. Journal, Graph, Registry, Transport and
 // Checkpoint are required (the host selects adapters, ADR-045/047);
-// Clock and IDs default to the reference implementations.
+// Clock and IDs default to the reference implementations. Obs is the
+// observability bundle (zero value = no-ops).
 type Options struct {
 	Journal    ports.JournalStore
 	Graph      ports.GraphStore
@@ -64,6 +67,7 @@ type Options struct {
 	Checkpoint ports.CheckpointStore
 	Clock      ports.Clock
 	IDs        ports.IDGenerator
+	Obs        ports.Observability
 }
 
 // New composes a runtime. Handlers are registered on rt.Bus by the host
@@ -82,16 +86,18 @@ func New(opts Options) (*Runtime, error) {
 	if gen == nil {
 		gen = ids.NewGenerator(clk)
 	}
+	o := obs.Fill(opts.Obs)
 	return &Runtime{
 		Journal:    opts.Journal,
 		Graph:      opts.Graph,
 		Registry:   opts.Registry,
 		Transport:  opts.Transport,
 		Checkpoint: opts.Checkpoint,
-		Bus:        command.NewBus(opts.Journal, opts.Registry, gen, clk),
+		Bus:        command.NewBus(opts.Journal, opts.Registry, gen, clk).WithObservability(o),
 		Projector:  projection.Projector{},
 		Clock:      clk,
 		IDs:        gen,
+		obs:        o,
 	}, nil
 }
 
@@ -111,18 +117,44 @@ func (rt *Runtime) ProjectBatch(ctx context.Context, batchSize int) (int, error)
 	}
 	for _, env := range batch {
 		if _, err := projection.ApplyIfHandled(rt.Projector, rt.Graph, env); err != nil {
+			rt.obs.Logger.Error(ctx, "projection apply failed",
+				ports.A("event_id", env.EventID), ports.A("error", err.Error()))
 			return 0, fmt.Errorf("projection apply %s: %w", env.EventID, err)
 		}
 	}
 	if err := rt.Checkpoint.Save(ctx, ProjectionCheckpoint, last); err != nil {
 		return 0, fmt.Errorf("projection checkpoint save %d: %w", last, err)
 	}
+	rt.obs.Meter.Counter("golem.projection.applied").Add(ctx, int64(len(batch)))
+	rt.recordLag(ctx, "projection", last)
 	return len(batch), nil
+}
+
+// recordLag tracks how far a tail loop trails the journal head
+// (OBSERVABILITY.md: projection lag).
+func (rt *Runtime) recordLag(ctx context.Context, loop string, last ports.StreamPosition) {
+	head, err := rt.Journal.Head(ctx)
+	if err != nil {
+		return
+	}
+	rt.obs.Meter.Histogram("golem.tail.lag").Record(ctx, float64(head-last), ports.A("loop", loop))
 }
 
 // PublishBatch pumps the outbox once. Returns published events (0 = caught up).
 func (rt *Runtime) PublishBatch(ctx context.Context, batchSize int) (int, error) {
-	return outbox.New(rt.Journal, rt.Transport, rt.Checkpoint).Pump(ctx, batchSize)
+	from, err := rt.Checkpoint.Load(ctx, PublishCheckpoint)
+	if err != nil {
+		return 0, fmt.Errorf("outbox checkpoint: %w", err)
+	}
+	n, err := outbox.New(rt.Journal, rt.Transport, rt.Checkpoint).Pump(ctx, batchSize)
+	if err == nil && n > 0 {
+		if last, err := rt.Checkpoint.Load(ctx, PublishCheckpoint); err == nil {
+			rt.obs.Meter.Counter("golem.outbox.published").Add(ctx, int64(n))
+			rt.recordLag(ctx, "outbox", last)
+			_ = from
+		}
+	}
+	return n, err
 }
 
 // Run drives both tail loops until ctx is cancelled. Interval paces

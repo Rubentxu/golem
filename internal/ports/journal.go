@@ -50,4 +50,7 @@ type JournalStore interface {
 	AppendIf(ctx context.Context, expected StreamVersion, events []RawEvent) ([]AppendResult, error)
 	ReadStream(ctx context.Context, tenant TenantID, streamID string, fromVersion uint64) ([]RawEvent, error)
 	Replay(ctx context.Context, from StreamPosition, limit int) ([]RawEvent, StreamPosition, error)
+	// Head returns the position of the newest persisted event (0 when
+	// empty). Tail loops use it to measure lag (OBSERVABILITY.md).
+	Head(ctx context.Context) (StreamPosition, error)
 }

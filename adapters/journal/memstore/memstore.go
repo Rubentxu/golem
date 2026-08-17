@@ -127,6 +127,13 @@ func (s *Store) Replay(ctx context.Context, from ports.StreamPosition, limit int
 	return out, ports.StreamPosition(end), nil
 }
 
+// Head returns the position of the newest event (0 when empty).
+func (s *Store) Head(_ context.Context) (ports.StreamPosition, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return ports.StreamPosition(len(s.events)), nil
+}
+
 func validate(e ports.RawEvent) error {
 	switch {
 	case e.TenantID == "":
