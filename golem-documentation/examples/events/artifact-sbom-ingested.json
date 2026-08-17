@@ -15,9 +15,24 @@
   "frame_id": null,
   "payload": {
     "artifact_digest": "sha256:deadbeef",
-    "format": "cyclonedx",
+    "format": "cyclonedx-1.6",
     "document_digest": "sha256:cafebabe",
-    "component_count": 42
+    "provider": "syft",
+    "external_id": "syft-001",
+    "components": [
+      {
+        "purl": "pkg:npm/lodash@4.17.21",
+        "name": "lodash",
+        "version": "4.17.21",
+        "ecosystem": "npm"
+      },
+      {
+        "purl": "pkg:pypi/requests@2.31.0",
+        "name": "requests",
+        "version": "2.31.0",
+        "ecosystem": "pypi"
+      }
+    ]
   },
   "evidence_refs": [
     "object://tenant_demo/evidence/sha256:cafebabe"
