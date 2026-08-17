@@ -8,6 +8,7 @@ import (
 
 	appci "github.com/Rubentxu/golem/internal/application/ci"
 	"github.com/Rubentxu/golem/internal/application/command"
+	apprelease "github.com/Rubentxu/golem/internal/application/release"
 	appreq "github.com/Rubentxu/golem/internal/application/requirements"
 	appscm "github.com/Rubentxu/golem/internal/application/scm"
 	appver "github.com/Rubentxu/golem/internal/application/verification"
@@ -393,8 +394,11 @@ func (s *Server) writeCommandError(w http.ResponseWriter, err error, corr string
 		errors.Is(err, appver.ErrEmptyCase), errors.Is(err, appver.ErrInvalidRunStatus):
 		s.problem(w, http.StatusUnprocessableEntity, CodeDomainRejection, err.Error(), corr)
 	case errors.Is(err, appwork.ErrItemNotFound),
-		errors.Is(err, appci.ErrCommitNotObserved), errors.Is(err, appver.ErrUnknownTarget):
+		errors.Is(err, appci.ErrCommitNotObserved), errors.Is(err, appver.ErrUnknownTarget),
+		errors.Is(err, apprelease.ErrUnknownArtifact), errors.Is(err, apprelease.ErrReleaseNotFound):
 		s.problem(w, http.StatusNotFound, CodeNotFound, err.Error(), corr)
+	case errors.Is(err, apprelease.ErrEmptyName), errors.Is(err, apprelease.ErrNoArtifacts):
+		s.problem(w, http.StatusUnprocessableEntity, CodeDomainRejection, err.Error(), corr)
 	case errors.Is(err, ports.ErrVersionConflict):
 		s.problem(w, http.StatusConflict, CodeRevisionConflict, "stream moved since read; re-read and retry (If-Match)", corr)
 	case errors.Is(err, ports.ErrEmptyTenant), errors.Is(err, ports.ErrEmptyActor):

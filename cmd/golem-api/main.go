@@ -18,8 +18,10 @@ import (
 	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
 	"github.com/Rubentxu/golem/internal/api/httpapi"
 	appci "github.com/Rubentxu/golem/internal/application/ci"
+	"github.com/Rubentxu/golem/internal/application/ingest"
 	appplanning "github.com/Rubentxu/golem/internal/application/planning"
 	appprojects "github.com/Rubentxu/golem/internal/application/projects"
+	apprelease "github.com/Rubentxu/golem/internal/application/release"
 	appreq "github.com/Rubentxu/golem/internal/application/requirements"
 	"github.com/Rubentxu/golem/internal/application/runtime"
 	appscm "github.com/Rubentxu/golem/internal/application/scm"
@@ -64,6 +66,8 @@ func main() {
 	rt.Bus.Register(appscm.CmdObserveCommit, appscm.ObserveCommitHandler())
 	rt.Bus.Register(appci.CmdCompleteBuild, appci.CompleteBuildHandler(rt.IDs, rt.Journal))
 	rt.Bus.Register(appver.CmdReportTestRun, appver.ReportTestRunHandler(rt.IDs, rt.Graph))
+	rt.Bus.Register(apprelease.CmdCreateCandidate, apprelease.CreateCandidateHandler(rt.IDs, rt.Graph))
+	rt.Bus.Register(apprelease.CmdEvaluateGate, apprelease.EvaluateGateHandler(rt.Graph))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -84,6 +88,7 @@ func main() {
 		Addr: addr,
 		Handler: httpapi.New(rt.Bus, rt.Graph, rt.Journal).
 			WithSearch(rt.Search).
+			WithIngest(ingest.New(rt.Bus)).
 			WithObservability(obsbundle).
 			Handler(),
 		ReadHeaderTimeout: 5 * time.Second,

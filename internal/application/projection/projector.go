@@ -16,6 +16,7 @@ import (
 	"github.com/Rubentxu/golem/internal/planning"
 	"github.com/Rubentxu/golem/internal/ports"
 	"github.com/Rubentxu/golem/internal/projects"
+	"github.com/Rubentxu/golem/internal/release"
 	"github.com/Rubentxu/golem/internal/requirements"
 	"github.com/Rubentxu/golem/internal/scm"
 	"github.com/Rubentxu/golem/internal/verification"
@@ -34,6 +35,7 @@ const (
 	KindBuild       = "Build"
 	KindArtifact    = "Artifact"
 	KindTestRun     = "TestRun"
+	KindRelease     = "Release"
 )
 
 // Projector maps journal events to graph mutations. Unknown event types
@@ -194,6 +196,38 @@ func (Projector) Project(env ports.RawEvent) (ports.GraphMutation, error) {
 			"case": p.TestCase, "status": p.Status,
 		}))
 		m.Ops = append(m.Ops, edgeUpsert(edgeID(env.EventID, "ver", 0), "VERIFIES", p.RunID, p.Verifies, causalAttrs(env)))
+
+	case release.EventCandidateCreated:
+		var p release.CandidateCreated
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
+		}
+		if p.ReleaseID == "" || len(p.Artifacts) == 0 {
+			return m, fmt.Errorf("projection %s: release_id and artifacts are mandatory", env.EventType)
+		}
+		artifacts := make([]any, 0, len(p.Artifacts))
+		for _, a := range p.Artifacts {
+			artifacts = append(artifacts, a)
+		}
+		m.Ops = append(m.Ops, nodeUpsert(p.ReleaseID, KindRelease, map[string]any{
+			"name": p.Name, "artifacts": artifacts, "gate_status": "pending",
+		}))
+		for i, digest := range p.Artifacts {
+			// Artifact ──RELEASED_AS──> Release (GRAPH_MODEL direction).
+			m.Ops = append(m.Ops, edgeUpsert(edgeID(env.EventID, "rel", i), "RELEASED_AS", digest, p.ReleaseID, causalAttrs(env)))
+		}
+
+	case release.EventGateEvaluated:
+		var p release.GateEvaluated
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
+		}
+		if p.ReleaseID == "" {
+			return m, fmt.Errorf("projection %s: empty release_id", env.EventType)
+		}
+		m.Ops = append(m.Ops, nodeUpsert(p.ReleaseID, KindRelease, map[string]any{
+			"gate_status": p.Result,
+		}))
 
 	case work.EventTypeRegistered:
 		var p work.TypeRegistered

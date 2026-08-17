@@ -128,6 +128,7 @@ type Server struct {
 	graph    GraphReader
 	streams  StreamVersionReader
 	search   SearchReader
+	ingest   IngestService
 	obs      ports.Observability
 
 	idsOnce sync.Once
@@ -143,6 +144,13 @@ func New(commands CommandSubmitter, graph GraphReader, streams StreamVersionRead
 // WithSearch sets the search reader (enables GET /api/v1/search).
 func (s *Server) WithSearch(r SearchReader) *Server {
 	s.search = r
+	return s
+}
+
+// WithIngest sets the provider event-sink service (enables
+// POST /api/v1/ingest/{provider}).
+func (s *Server) WithIngest(svc IngestService) *Server {
+	s.ingest = svc
 	return s
 }
 
@@ -184,6 +192,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/ci/builds", s.handleCompleteBuild)
 	mux.HandleFunc("POST /api/v1/test/runs", s.handleReportTestRun)
 	mux.HandleFunc("GET /api/v1/trace/{id}", s.handleTrace)
+	mux.HandleFunc("POST /api/v1/ingest/{provider}", s.handleIngest)
+	mux.HandleFunc("POST /api/v1/releases", s.handleCreateRelease)
+	mux.HandleFunc("POST /api/v1/releases/{id}/gate", s.handleEvaluateGate)
+	mux.HandleFunc("GET /api/v1/releases/{id}", s.handleGetRelease)
 	return mux
 }
 
@@ -278,6 +290,10 @@ func muxMatch(r *http.Request) (bool, string) {
 		{http.MethodPost, "/api/v1/ci/builds"},
 		{http.MethodPost, "/api/v1/test/runs"},
 		{http.MethodGet, "/api/v1/trace/{id}"},
+		{http.MethodPost, "/api/v1/ingest/{provider}"},
+		{http.MethodPost, "/api/v1/releases"},
+		{http.MethodPost, "/api/v1/releases/{id}/gate"},
+		{http.MethodGet, "/api/v1/releases/{id}"},
 	}
 	for _, rt := range routes {
 		if r.Method == rt.method {
