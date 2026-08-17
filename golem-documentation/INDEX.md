@@ -1,6 +1,6 @@
 # GOLEM Documentation Index
 
-Files before this index: **137**
+Files before this index: **141**
 
 ## 00_OVERVIEW
 
@@ -116,6 +116,10 @@ Files before this index: **137**
 - `07_ADR/ADR-050.md`
 - `07_ADR/ADR-051.md`
 - `07_ADR/ADR-052.md`
+- `07_ADR/ADR-053.md`
+- `07_ADR/ADR-054.md`
+- `07_ADR/ADR-055.md`
+- `07_ADR/ADR-056.md`
 - `07_ADR/ADR-CATALOG.md`
 - `07_ADR/README.md`
 - `07_ADR/adr-index.json`

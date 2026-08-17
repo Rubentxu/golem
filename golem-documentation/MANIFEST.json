@@ -4,8 +4,8 @@
   "baseline": "0.1",
   "generated": "2026-08-17",
   "language": "es-ES",
-  "file_count": 138,
-  "adr_count": 52,
+  "file_count": 142,
+  "adr_count": 56,
   "validation": {
     "json": "valid",
     "yaml": "valid",
@@ -110,6 +110,10 @@
     "07_ADR/ADR-050.md": "d0f737ddf524e1b844c2548274c2bc59b3e5df089c2a7c409b5e2adbe8eea9f3",
     "07_ADR/ADR-051.md": "bc93e959e52d4c3b0ea76235a9be17dab96ff136b436f727e47aaef1b014bd8d",
     "07_ADR/ADR-052.md": "c41250c04f3c26b57de1bbdd4a06e3160435dfc1b144d2a754b0d7e34de504d7",
+    "07_ADR/ADR-053.md": "5246c0d8d0399500a493291f21ddf7f567d3769d15417c77eb38fa6a52ec19bc",
+    "07_ADR/ADR-054.md": "d267faad9d36118be49b5f9f0cea6968c847c5737b83b1a4cca0daac5c7fcd2c",
+    "07_ADR/ADR-055.md": "dc80e0fcfb2aa91366c4d228e677d7a6ffb73affbff49a9fb61dbb6c58039df9",
+    "07_ADR/ADR-056.md": "b86d49e07ecfe6ba32cd999b4d80eb1cd32f47e747360abb5c1d5f81abc75ed5",
     "07_ADR/ADR-CATALOG.md": "5c775c173f8e20544139a67455d0095849fae79e731abe1878d5f4c40c0399e8",
     "07_ADR/README.md": "117cf8fba342e67e4785c40a8ebb6880a0facb19a7024d14d946cf7c1986c32a",
     "07_ADR/adr-index.json": "2c51ed1e83dc775cbdcf830067fb028fee75e48465b21ec5cce2b418f5d36a84",
@@ -146,7 +150,7 @@
     "ROADMAP.md": "2f11eeea28fc4a9a2734835811c6e967bdf5a29c11f038c0c38857c87d0b02f5",
     "SECURITY.md": "b946eb4e42d44a10795cb11e88ae5dd5f8a7a6afb624740e2c664819f2aff141",
     "examples/capability-pack/manifest.json": "2711875d3ebe30c4ba5571ac77c11d085d88e94dc4bde154f1d41a1cc8cf6a0a",
-    "examples/events/artifact-sbom-ingested.json": "3a6cab2d05bd83350e3c497c79893b0160290df027cfb03e455d8c4a42d133d9",
+    "examples/events/artifact-sbom-ingested.json": "0ab11b0f13f002e3c0f76c0901959e7e75d12780d34745979915dc406115de1a",
     "examples/go/events.go": "0515f593194c98561b9bbd5074cbd2a88dbc664b36415df35d634bb481de0626",
     "examples/go/ports.go": "a5cbef7b2ade7ccc48c97da06e3eef5dc4fa1a0d72c789d98f62816d8cdda562"
   }
