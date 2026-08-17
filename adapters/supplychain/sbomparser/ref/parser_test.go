@@ -3,6 +3,7 @@ package ref
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/Rubentxu/golem/internal/ports"
@@ -10,12 +11,13 @@ import (
 )
 
 func TestSBOMParserTCK(t *testing.T) {
-	// Resolve fixture directory relative to this test file: ../../../testdata/supplychain/
-	exe, err := os.Executable()
-	if err != nil {
-		t.Skipf("skipping (cannot determine testdata path): %v", err)
-	}
-	baseDir := filepath.Join(filepath.Dir(exe), "..", "..", "..", "testdata", "supplychain")
+	// Resolve fixture directory relative to this test file's source location.
+	// Test file is at adapters/supplychain/sbomparser/ref/parser_test.go.
+	// Repo root is 4 levels up: ref → sbomparser → supplychain → adapters → repo.
+	_, srcFile, _, _ := runtime.Caller(0)
+	srcDir := filepath.Dir(srcFile)                           // adapters/supplychain/sbomparser/ref
+	repoRoot := filepath.Join(srcDir, "..", "..", "..", "..") // repo root
+	baseDir := filepath.Join(repoRoot, "testdata", "supplychain")
 	if _, err := os.Stat(baseDir); os.IsNotExist(err) {
 		t.Skipf("skipping (fixture dir not found at %s): %v", baseDir, err)
 	}

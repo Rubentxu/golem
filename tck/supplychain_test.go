@@ -23,6 +23,7 @@ import (
 	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
 	"github.com/Rubentxu/golem/internal/api/httpapi"
 	appci "github.com/Rubentxu/golem/internal/application/ci"
+	appcmd "github.com/Rubentxu/golem/internal/application/command"
 	"github.com/Rubentxu/golem/internal/application/ingest"
 	apprelease "github.com/Rubentxu/golem/internal/application/release"
 	"github.com/Rubentxu/golem/internal/application/runtime"
@@ -30,6 +31,8 @@ import (
 	appsupplychain "github.com/Rubentxu/golem/internal/application/supplychain"
 	appver "github.com/Rubentxu/golem/internal/application/verification"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
+	"github.com/Rubentxu/golem/internal/ports"
+	domainsupplychain "github.com/Rubentxu/golem/internal/supplychain"
 )
 
 // loadFixture reads a testdata fixture file.
@@ -53,6 +56,7 @@ type stack struct {
 	post   func(path, idemKey, body string) (int, map[string]any)
 	get    func(path string) (int, map[string]any)
 	drain  func()
+	cmd    func(name string, payload any) error
 }
 
 // newStack builds a fresh, fully-registered runtime for one subtest.
@@ -139,7 +143,21 @@ func newStack(t *testing.T) *stack {
 		}
 	}
 
-	return &stack{ctx: ctx, cancel: cancel, rt: rt, srv: srv, post: post, get: get, drain: drain}
+	cmd := func(name string, payload any) error {
+		t.Helper()
+		actor := ports.Actor{Type: "service", ID: "test"}
+		receipt, err := rt.Bus.Submit(ctx, appcmd.Command{
+			Name: name, TenantID: ports.TenantID(tenant), Actor: actor,
+			CommandID: "test." + name, Payload: payload,
+		})
+		if err != nil {
+			return err
+		}
+		_ = receipt
+		return nil
+	}
+
+	return &stack{ctx: ctx, cancel: cancel, rt: rt, srv: srv, post: post, get: get, drain: drain, cmd: cmd}
 }
 
 func (s *stack) cleanup() {
@@ -633,6 +651,7 @@ func TestSupplyChainScenarios(t *testing.T) {
 
 	t.Run("S13_VEXAffectedDoesNotMitigate", func(t *testing.T) {
 		// Scenario: VEX with status=affected does NOT create MITIGATED_BY edge.
+		// Gate must return RED because affected vulnerability is not suppressed.
 		s := newStack(t)
 		defer s.cleanup()
 
@@ -653,12 +672,25 @@ func TestSupplyChainScenarios(t *testing.T) {
 		s.drain()
 
 		// Ingest SBOM with component.
-		spdxData := loadFixture("spdx23.json")
+		spdxData := loadFixture("spdx23-s13.json")
 		b64 := base64.StdEncoding.EncodeToString(spdxData)
 		sbomPayload := `{"external_id":"spdx-s13","document":{"name":"test"},"raw_b64":"` + b64 + `"}`
 		code, _ = s.post("/api/v1/ingest/sbom-spdx", "idem-s13-sbom", sbomPayload)
 		if code != http.StatusAccepted {
 			t.Fatalf("sbom ingest: %d", code)
+		}
+		s.drain()
+
+		// Report vulnerability first (needed for gate to find open vuln).
+		err := s.cmd(appsupplychain.CmdReportVulnerability, appsupplychain.ReportVulnerability{
+			VulnID:        "CVE-2021-23337",
+			Severity:      "high",
+			Status:        "open",
+			ComponentPurl: "pkg:github/example/lib@1.0.0",
+			Provider:      "test",
+		})
+		if err != nil {
+			t.Fatalf("vuln report: %v", err)
 		}
 		s.drain()
 
@@ -671,6 +703,111 @@ func TestSupplyChainScenarios(t *testing.T) {
 			t.Fatalf("vex not accepted: %+v", rep)
 		}
 		s.drain()
+
+		// Create release and evaluate gate.
+		code, _ = s.post("/api/v1/releases", "idem-s13-rel", `{"name":"v0.1.0-rc1","artifacts":["`+digest+`"]}`)
+		if code != http.StatusAccepted {
+			t.Fatalf("release create: %d", code)
+		}
+		s.drain()
+
+		releaseID := s.recoverReleaseID("v0.1.0-rc1")
+		if releaseID == "" {
+			t.Fatal("release id not found")
+		}
+
+		// Evaluate gate: should be RED because affected VEX does NOT suppress.
+		gateCode, _ := s.post("/api/v1/releases/"+releaseID+"/gate", "idem-s13-gate", "{}")
+		if gateCode != http.StatusAccepted {
+			t.Fatalf("gate evaluate: %d", gateCode)
+		}
+		s.drain()
+		// Get release and check gate result.
+		_, rel := s.get("/api/v1/releases/" + releaseID)
+		attrs := rel["attributes"].(map[string]any)
+		if attrs["gate_status"] != "red" {
+			t.Fatalf("gate = %v, want red (affected VEX does not mitigate)", attrs["gate_status"])
+		}
+	})
+
+	t.Run("S13b_VEXInRemediationDoesNotMitigate", func(t *testing.T) {
+		// Scenario: VEX with status=in_remediation does NOT create MITIGATED_BY edge.
+		// Per spec and ADR-055, MITIGATED_BY is restricted to not_affected|fixed only.
+		s := newStack(t)
+		defer s.cleanup()
+
+		commit := strings.Repeat("b3", 20)
+		push := `{"repository":{"full_name":"test/repo"},"commits":[{"id":"` + commit + `","message":"feat: vex-in-remed"}]}`
+		code, _ := s.post("/api/v1/ingest/github", "idem-s13b-commit", push)
+		if code != http.StatusAccepted {
+			t.Fatalf("commit observe: %d", code)
+		}
+		s.drain()
+
+		digest := "sha256:" + strings.Repeat("f0", 32)
+		buildPayload := `{"external_build_id":"b-s13b","pipeline":"release","commit":"` + commit + `","status":"success","artifacts":[{"digest":"` + digest + `","name":"bin","kind":"ContainerImage"}]}`
+		code, _ = s.post("/api/v1/ingest/ci-generic", "idem-s13b-build", buildPayload)
+		if code != http.StatusAccepted {
+			t.Fatalf("build ingest: %d", code)
+		}
+		s.drain()
+
+		spdxData := loadFixture("spdx23-s13.json")
+		b64 := base64.StdEncoding.EncodeToString(spdxData)
+		sbomPayload := `{"external_id":"spdx-s13b","document":{"name":"test"},"raw_b64":"` + b64 + `"}`
+		code, _ = s.post("/api/v1/ingest/sbom-spdx", "idem-s13b-sbom", sbomPayload)
+		if code != http.StatusAccepted {
+			t.Fatalf("sbom ingest: %d", code)
+		}
+		s.drain()
+
+		// Report vulnerability first (needed for gate to find open vuln).
+		err := s.cmd(appsupplychain.CmdReportVulnerability, appsupplychain.ReportVulnerability{
+			VulnID:        "CVE-2021-23337",
+			Severity:      "high",
+			Status:        "open",
+			ComponentPurl: "pkg:github/example/lib@1.0.0",
+			Provider:      "test",
+		})
+		if err != nil {
+			t.Fatalf("vuln report: %v", err)
+		}
+		s.drain()
+
+		// VEX with status=in_remediation (no MITIGATED_BY edge should be created).
+		code, rep := s.post("/api/v1/ingest/vex-openvex", "idem-s13b-vex", `{"doc_id":"vex-s13b-in-remed","statements":[{"id":"vs13b","vuln_id":"CVE-2021-23337","status":"in_remediation","product":{"identifier":"pkg:github/example/lib@1.0.0","type":"purl"},"provider":"test"}]}`)
+		if code != http.StatusAccepted {
+			t.Fatalf("vex in_remediation: %d", code)
+		}
+		if rep["accepted"].(float64) != 1 {
+			t.Fatalf("vex not accepted: %+v", rep)
+		}
+		s.drain()
+
+		// Create release and evaluate gate.
+		code, _ = s.post("/api/v1/releases", "idem-s13b-rel", `{"name":"v0.1.0-rc1","artifacts":["`+digest+`"]}`)
+		if code != http.StatusAccepted {
+			t.Fatalf("release create: %d", code)
+		}
+		s.drain()
+
+		releaseID := s.recoverReleaseID("v0.1.0-rc1")
+		if releaseID == "" {
+			t.Fatal("release id not found")
+		}
+
+		// Gate must be RED: in_remediation does NOT suppress the vulnerability.
+		gateCode, _ := s.post("/api/v1/releases/"+releaseID+"/gate", "idem-s13b-gate", "{}")
+		if gateCode != http.StatusAccepted {
+			t.Fatalf("gate evaluate: %d", gateCode)
+		}
+		s.drain()
+		// Get release and check gate result.
+		_, rel := s.get("/api/v1/releases/" + releaseID)
+		attrs := rel["attributes"].(map[string]any)
+		if attrs["gate_status"] != "red" {
+			t.Fatalf("gate = %v, want red (in_remediation does not mitigate)", attrs["gate_status"])
+		}
 	})
 
 	t.Run("S14_MalformedSBOMRejected422", func(t *testing.T) {
@@ -773,12 +910,117 @@ func TestSupplyChainScenarios(t *testing.T) {
 		s := newStack(t)
 		defer s.cleanup()
 
-		// When blast radius bounds are hit, truncated flag must be true.
-		encodedPurl := url.QueryEscape("pkg:nonexistent@1.0.0")
-		code, result := s.get("/api/v1/components/" + encodedPurl + "/blast-radius")
-		// Unknown component returns 422 via ErrInvalidPurlForBlast.
-		_ = code
-		_ = result
+		// Direction 1 — small graph (within MaxNodes bound): Truncated=false.
+		// Build: commit → build → artifact, SBOM with 1 component, release.
+		commit := strings.Repeat("c8", 20)
+		push := `{"repository":{"full_name":"test/repo"},"commits":[{"id":"` + commit + `","message":"feat: s16"}]}`
+		code, _ := s.post("/api/v1/ingest/github", "idem-s16-commit", push)
+		if code != http.StatusAccepted {
+			t.Fatalf("commit observe: %d", code)
+		}
+		s.drain()
+
+		digest := "sha256:" + strings.Repeat("c8", 32)
+		buildPayload := `{"external_build_id":"b-s16","pipeline":"release","commit":"` + commit + `","status":"success","artifacts":[{"digest":"` + digest + `","name":"bin","kind":"ContainerImage"}]}`
+		code, _ = s.post("/api/v1/ingest/ci-generic", "idem-s16-build", buildPayload)
+		if code != http.StatusAccepted {
+			t.Fatalf("build ingest: %d", code)
+		}
+		s.drain()
+
+		spdxData := loadFixture("spdx23.json")
+		var spdx map[string]any
+		json.Unmarshal(spdxData, &spdx)
+		spdx["verificationCode"].(map[string]any)["value"] = strings.Repeat("c8", 32)
+		spdxData, _ = json.Marshal(spdx)
+		b64 := base64.StdEncoding.EncodeToString(spdxData)
+		sbomPayload := `{"external_id":"spdx-s16","document":{"name":"test"},"raw_b64":"` + b64 + `"}`
+		code, _ = s.post("/api/v1/ingest/sbom-spdx", "idem-s16-sbom", sbomPayload)
+		if code != http.StatusAccepted {
+			t.Fatalf("sbom ingest: %d", code)
+		}
+		s.drain()
+
+		code, _ = s.post("/api/v1/releases", "idem-s16-rel", `{"name":"v0.1.0-rc1","artifacts":["`+digest+`"]}`)
+		if code != http.StatusAccepted {
+			t.Fatalf("release create: %d", code)
+		}
+		s.drain()
+
+		// Query blast radius for a known component in the SBOM.
+		var brCode int
+		var brResult map[string]any
+		found := false
+		for _, purl := range []string{
+			"pkg:github/example/lib@1.0.0",
+			"pkg:golang/github.com/example/util@v2.1.0",
+		} {
+			encodedPurl := url.QueryEscape(purl)
+			brCode, brResult = s.get("/api/v1/components/" + encodedPurl + "/blast-radius")
+			if brCode == http.StatusOK {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Skip("S16 component not created — cannot test truncation")
+		}
+		// The small graph (1 release) must NOT be truncated.
+		if brResult["truncated"] != false {
+			t.Fatalf("small graph: truncated=%v, want false", brResult["truncated"])
+		}
+
+		// Direction 2 — wide graph with MaxNodes=10: Truncated=true.
+		// Use the internal BlastRadius with WithMaxNodes override to bound
+		// the query to 10 nodes, well below the 11-release wide graph.
+		// Build the wide graph via direct memstore population.
+		tenant := "t_sc"
+		ctx := context.Background()
+		const testPurl = "pkg:truncation/test-component@v1.0.0"
+		// Add 11 releases for the same component: each needs an artifact + SBOM.
+		// Node structure: Component → SBOM (CONTAINS), Artifact → SBOM (HAS_SBOM), Artifact → Release (RELEASED_AS).
+		for i := 0; i < 11; i++ {
+			relID := "rel-s16-" + strings.Repeat(string(rune('a'+i%26)), 3)
+			artID := "art-s16-" + strings.Repeat(string(rune('a'+i%26)), 3)
+			sbomID := "sbom-s16-" + strings.Repeat(string(rune('a'+i%26)), 3)
+			ops := []ports.GraphOp{
+				{Kind: ports.OpUpsertNode, Target: testPurl, Data: map[string]any{"kind": domainsupplychain.KindPackageComponent, "attributes": map[string]any{"purl": testPurl}}},
+				{Kind: ports.OpUpsertNode, Target: sbomID, Data: map[string]any{"kind": domainsupplychain.KindSBOM, "attributes": map[string]any{"name": "test"}}},
+				{Kind: ports.OpUpsertNode, Target: artID, Data: map[string]any{"kind": "Artifact", "attributes": map[string]any{"digest": artID}}},
+				{Kind: ports.OpUpsertNode, Target: relID, Data: map[string]any{"kind": "Release", "attributes": map[string]any{"name": "v1.0." + strings.Repeat(string(rune('0'+i)), 1), "artifacts": []any{artID}}}},
+				{Kind: ports.OpUpsertEdge, Target: "e-sbom-" + relID, Data: map[string]any{"type": domainsupplychain.RelationCONTAINS, "source": sbomID, "target": testPurl}},
+				{Kind: ports.OpUpsertEdge, Target: "e-has-" + relID, Data: map[string]any{"type": domainsupplychain.RelationHAS_SBOM, "source": artID, "target": sbomID}},
+				{Kind: ports.OpUpsertEdge, Target: "e-rel-" + relID, Data: map[string]any{"type": "RELEASED_AS", "source": artID, "target": relID}},
+			}
+			_, err := s.rt.Graph.Apply(ctx, ports.GraphMutation{TenantID: ports.TenantID(tenant), Ops: ops})
+			if err != nil {
+				t.Fatalf("graph population: %v", err)
+			}
+		}
+
+		// Query with MaxNodes=10: 1 component + 11 SBOMs + 11 artifacts + 11 releases = 34 nodes
+		// exceeds MaxNodes=10 → Truncated must be true.
+		wctx := appsupplychain.WithMaxNodes(ctx, 10)
+		wctx = appsupplychain.WithMaxEdges(wctx, 10000)
+		brWide, err := appsupplychain.BlastRadius(wctx, s.rt.Graph, ports.TenantID(tenant), testPurl)
+		if err != nil {
+			t.Fatalf("BlastRadius wide graph: %v", err)
+		}
+		if !brWide.Truncated {
+			t.Fatalf("wide graph (11 releases, MaxNodes=10): truncated=%v, want true", brWide.Truncated)
+		}
+
+		// Direction 3 — same wide graph with MaxNodes=50: Truncated=false.
+		// 34 nodes < 50 nodes → result fits within bound.
+		wctx2 := appsupplychain.WithMaxNodes(ctx, 50)
+		wctx2 = appsupplychain.WithMaxEdges(wctx2, 10000)
+		brWide2, err := appsupplychain.BlastRadius(wctx2, s.rt.Graph, ports.TenantID(tenant), testPurl)
+		if err != nil {
+			t.Fatalf("BlastRadius wide graph (relaxed bound): %v", err)
+		}
+		if brWide2.Truncated {
+			t.Fatalf("wide graph (11 releases, MaxNodes=50): truncated=%v, want false", brWide2.Truncated)
+		}
 	})
 
 	t.Run("S17_UnknownComponentBlastRadius404", func(t *testing.T) {

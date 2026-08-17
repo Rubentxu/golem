@@ -496,8 +496,8 @@ func projectSingle(env ports.RawEvent) (ports.GraphMutation, error) {
 		if err := json.Unmarshal(env.Payload, &p); err != nil {
 			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
 		}
-		if p.ReleaseID == "" || len(p.Artifacts) == 0 {
-			return m, fmt.Errorf("projection %s: release_id and artifacts are mandatory", env.EventType)
+		if p.ReleaseID == "" {
+			return m, fmt.Errorf("projection %s: release_id is mandatory", env.EventType)
 		}
 		artifacts := make([]any, 0, len(p.Artifacts))
 		for _, a := range p.Artifacts {
@@ -746,11 +746,12 @@ func projectVEXStatement(env ports.RawEvent) (ports.GraphMutation, error) {
 	}
 	m.Ops = append(m.Ops, nodeUpsert(p.StatementID, KindVEXStatement, vexAttrs))
 
-	// MITIGATED_BY edge: Vulnerability → VEXStatement when status is
-	// not_affected, fixed, or in_remediation.
+	// MITIGATED_BY edge: Vulnerability → VEXStatement only when status is
+	// not_affected or fixed (per spec and ADR-055). in_remediation does NOT
+	// suppress the vulnerability in the gate walk.
 	vulnID := "vuln-" + p.VulnID
 	switch p.Status {
-	case supplychain.VEXStatusNotAffected, supplychain.VEXStatusFixed, supplychain.VEXStatusInRemediation:
+	case supplychain.VEXStatusNotAffected, supplychain.VEXStatusFixed:
 		m.Ops = append(m.Ops, edgeUpsert(
 			edgeID(env.EventID, "mit", 0),
 			supplychain.RelationMITIGATED_BY,

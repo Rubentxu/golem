@@ -4,6 +4,39 @@ import (
 	"testing"
 )
 
+func TestSBOMCycloneDXCommandIDDeterminism(t *testing.T) {
+	payload := []byte(`{"external_id": "cdx-doc-1", "document": {"metadata": {"component": {"name": "test-cdx"}}}, "raw_b64": "ZG9j"}`)
+	cdx := SBOMCycloneDX{}
+	first, err := cdx.Translate(payload)
+	if err != nil {
+		t.Fatalf("first translate: %v", err)
+	}
+	second, err := cdx.Translate(payload)
+	if err != nil {
+		t.Fatalf("second translate: %v", err)
+	}
+	if len(first) != len(second) {
+		t.Fatalf("different number of commands: first=%d second=%d", len(first), len(second))
+	}
+	for i := range first {
+		if first[i].CommandID != second[i].CommandID {
+			t.Fatalf("command %d: first=%q second=%q", i, first[i].CommandID, second[i].CommandID)
+		}
+	}
+	// Different external_id must produce a different CommandID.
+	differentPayload := []byte(`{"external_id": "cdx-doc-2", "document": {"metadata": {"component": {"name": "test-cdx"}}}, "raw_b64": "ZG9j"}`)
+	third, err := cdx.Translate(differentPayload)
+	if err != nil {
+		t.Fatalf("third translate: %v", err)
+	}
+	if len(third) == 0 {
+		t.Fatal("expected at least one command for different external_id")
+	}
+	if first[0].CommandID == third[0].CommandID {
+		t.Fatalf("same external_id must produce same CommandID; got %q for both doc-1 and doc-2", first[0].CommandID)
+	}
+}
+
 func TestVEXOpenVEXCommandIDDeterminism(t *testing.T) {
 	payload := []byte(`{
 		"doc_id": "vex-doc-1",

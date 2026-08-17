@@ -14,6 +14,12 @@ import (
 	domainsupplychain "github.com/Rubentxu/golem/internal/supplychain"
 )
 
+// contextKey is a custom type to avoid collisions in context.WithValue.
+type contextKey string
+
+const blastRadiusMaxNodesKey contextKey = "supplychain.blast_radius.max_nodes"
+const blastRadiusMaxEdgesKey contextKey = "supplychain.blast_radius.max_edges"
+
 // BlastRadiusResult describes which releases are affected by a given component.
 type BlastRadiusResult struct {
 	Component string           `json:"component"`
@@ -35,6 +41,18 @@ const MaxBlastRadiusEdges = 2000
 
 // ErrInvalidPurlForBlast is returned when the component purl is not a valid URL-encoded purl.
 var ErrInvalidPurlForBlast = errors.New("supplychain: invalid purl for blast radius")
+
+// WithMaxNodes returns a context that overrides the MaxNodes safety bound for
+// BlastRadius traversal. This is intended for test use only.
+func WithMaxNodes(ctx context.Context, maxNodes int) context.Context {
+	return context.WithValue(ctx, blastRadiusMaxNodesKey, maxNodes)
+}
+
+// WithMaxEdges returns a context that overrides the MaxEdges safety bound for
+// BlastRadius traversal. This is intended for test use only.
+func WithMaxEdges(ctx context.Context, maxEdges int) context.Context {
+	return context.WithValue(ctx, blastRadiusMaxEdgesKey, maxEdges)
+}
 
 // BlastRadius computes the set of releases whose artifacts contain the given component.
 // It traverses: component → CONTAINS⁻¹ → SBOM → HAS_SBOM⁻¹ → Artifact → RELEASED_AS → Release.
@@ -67,14 +85,22 @@ func BlastRadius(ctx context.Context, graph ports.GraphStore, tenant ports.Tenan
 	// The memstore Traversal is undirected BFS. Starting from the component purl,
 	// we walk through CONTAINS (from SBOM side), HAS_SBOM (from SBOM side), and RELEASED_AS edges.
 	// MaxDepth=4: component(0) → SBOM(1) → Artifact(2) → Release(3).
+	maxNodes := MaxBlastRadiusNodes
+	maxEdges := MaxBlastRadiusEdges
+	if v, ok := ctx.Value(blastRadiusMaxNodesKey).(int); ok {
+		maxNodes = v
+	}
+	if v, ok := ctx.Value(blastRadiusMaxEdgesKey).(int); ok {
+		maxEdges = v
+	}
 	sub, err := graph.Traversal(ctx, ports.TraversalQuery{
 		TenantID:  tenant,
 		Roots:     []string{purl},
 		EdgeTypes: []string{domainsupplychain.RelationCONTAINS, domainsupplychain.RelationHAS_SBOM, "RELEASED_AS"},
 		Kinds:     []string{domainsupplychain.KindSBOM, projection.KindArtifact, projection.KindRelease},
 		MaxDepth:  4,
-		MaxNodes:  MaxBlastRadiusNodes,
-		MaxEdges:  MaxBlastRadiusEdges,
+		MaxNodes:  maxNodes,
+		MaxEdges:  maxEdges,
 	})
 	if err != nil {
 		return BlastRadiusResult{}, err
