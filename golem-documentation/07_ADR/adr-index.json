@@ -111,22 +111,22 @@
   },
   "ADR-023": {
     "title": "Support SPDX and CycloneDX SBOM",
-    "status": "Accepted",
+    "status": "Superseded by ADR-053",
     "date": "2026-08-17"
   },
   "ADR-024": {
     "title": "Use SLSA/in-toto compatible provenance",
-    "status": "Accepted",
+    "status": "Superseded by ADR-054",
     "date": "2026-08-17"
   },
   "ADR-025": {
     "title": "Sigstore is reference signing adapter",
-    "status": "Accepted",
+    "status": "Superseded by ADR-054",
     "date": "2026-08-17"
   },
   "ADR-026": {
     "title": "VEX is first-class security data",
-    "status": "Accepted",
+    "status": "Superseded by ADR-055",
     "date": "2026-08-17"
   },
   "ADR-027": {
@@ -256,6 +256,26 @@
   },
   "ADR-052": {
     "title": "Replaceability Level is an architecture fitness metric",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-053": {
+    "title": "SBOM ingestion through the SBOMParser port",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-054": {
+    "title": "Provenance and signing behind dedicated ports",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-055": {
+    "title": "Vulnerability and VEX as first-class graph data",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-056": {
+    "title": "Typed graph traversal with explicit truncation",
     "status": "Accepted",
     "date": "2026-08-17"
   }

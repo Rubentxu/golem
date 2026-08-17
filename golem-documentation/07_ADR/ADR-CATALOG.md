@@ -24,10 +24,10 @@
 | [ADR-020](ADR-020.md) | Accepted | Use transactional outbox and idempotent inbox |
 | [ADR-021](ADR-021.md) | Accepted | Optimistic concurrency is the default mutation model |
 | [ADR-022](ADR-022.md) | Accepted | Artifacts are content-addressed |
-| [ADR-023](ADR-023.md) | Accepted | Support SPDX and CycloneDX SBOM |
-| [ADR-024](ADR-024.md) | Accepted | Use SLSA/in-toto compatible provenance |
-| [ADR-025](ADR-025.md) | Accepted | Sigstore is reference signing adapter |
-| [ADR-026](ADR-026.md) | Accepted | VEX is first-class security data |
+| [ADR-023](ADR-023.md) | Superseded by [ADR-053](ADR-053.md) | Support SPDX and CycloneDX SBOM |
+| [ADR-024](ADR-024.md) | Superseded by [ADR-054](ADR-054.md) | Use SLSA/in-toto compatible provenance |
+| [ADR-025](ADR-025.md) | Superseded by [ADR-054](ADR-054.md) | Sigstore is reference signing adapter |
+| [ADR-026](ADR-026.md) | Superseded by [ADR-055](ADR-055.md) | VEX is first-class security data |
 | [ADR-027](ADR-027.md) | Accepted | Web UI is an adapter, not the domain |
 | [ADR-028](ADR-028.md) | Accepted | Graph visualization is neighborhood-based |
 | [ADR-029](ADR-029.md) | Accepted | Third-party extension code uses WASM or remote plugins |
@@ -54,3 +54,7 @@
 | [ADR-050](ADR-050.md) | Accepted | Canonical provider-neutral export is mandatory |
 | [ADR-051](ADR-051.md) | Accepted | Provider migration is a supported operational workflow |
 | [ADR-052](ADR-052.md) | Accepted | Replaceability Level is an architecture fitness metric |
+| [ADR-053](ADR-053.md) | Accepted | SBOM ingestion through the SBOMParser port |
+| [ADR-054](ADR-054.md) | Accepted | Provenance and signing behind dedicated ports |
+| [ADR-055](ADR-055.md) | Accepted | Vulnerability and VEX as first-class graph data |
+| [ADR-056](ADR-056.md) | Accepted | Typed graph traversal with explicit truncation |
