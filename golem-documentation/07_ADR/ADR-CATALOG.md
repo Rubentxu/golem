@@ -1,0 +1,56 @@
+# ADR Catalog
+
+| ADR | Estado | Decisión |
+|---|---|---|
+| [ADR-001](ADR-001.md) | Accepted | Use Go for kernel and backend services |
+| [ADR-002](ADR-002.md) | Accepted | Hexagonal architecture is mandatory |
+| [ADR-003](ADR-003.md) | Accepted | Bounded contexts and SOLID over shared mega-models |
+| [ADR-004](ADR-004.md) | Accepted | Engineering Graph is the canonical domain model |
+| [ADR-005](ADR-005.md) | Accepted | Graph Journal is the authoritative causal history |
+| [ADR-006](ADR-006.md) | Accepted | Use CQRS-style command/query separation |
+| [ADR-007](ADR-007.md) | Accepted | Use cell-based SaaS architecture |
+| [ADR-008](ADR-008.md) | Accepted | Tenant context is mandatory end-to-end |
+| [ADR-009](ADR-009.md) | Proposed | Multi-region writes are spike-gated |
+| [ADR-010](ADR-010.md) | Accepted | Public API is OpenAPI-first |
+| [ADR-011](ADR-011.md) | Accepted | Typed internal RPC without domain leakage |
+| [ADR-012](ADR-012.md) | Accepted | NATS JetStream is reference event transport, not core dependency |
+| [ADR-013](ADR-013.md) | Proposed | Graph database choice requires benchmark gate |
+| [ADR-014](ADR-014.md) | Accepted | Large blobs use S3-compatible ObjectStore |
+| [ADR-015](ADR-015.md) | Accepted | Search is a rebuildable derived projection |
+| [ADR-016](ADR-016.md) | Accepted | Analytics is a rebuildable derived projection |
+| [ADR-017](ADR-017.md) | Accepted | OIDC is the identity boundary |
+| [ADR-018](ADR-018.md) | Accepted | Policy engine behind PolicyEvaluator port |
+| [ADR-019](ADR-019.md) | Accepted | OpenTelemetry is the observability contract |
+| [ADR-020](ADR-020.md) | Accepted | Use transactional outbox and idempotent inbox |
+| [ADR-021](ADR-021.md) | Accepted | Optimistic concurrency is the default mutation model |
+| [ADR-022](ADR-022.md) | Accepted | Artifacts are content-addressed |
+| [ADR-023](ADR-023.md) | Accepted | Support SPDX and CycloneDX SBOM |
+| [ADR-024](ADR-024.md) | Accepted | Use SLSA/in-toto compatible provenance |
+| [ADR-025](ADR-025.md) | Accepted | Sigstore is reference signing adapter |
+| [ADR-026](ADR-026.md) | Accepted | VEX is first-class security data |
+| [ADR-027](ADR-027.md) | Accepted | Web UI is an adapter, not the domain |
+| [ADR-028](ADR-028.md) | Accepted | Graph visualization is neighborhood-based |
+| [ADR-029](ADR-029.md) | Accepted | Third-party extension code uses WASM or remote plugins |
+| [ADR-030](ADR-030.md) | Accepted | Graph Journal combines state semantics and causal history |
+| [ADR-031](ADR-031.md) | Accepted | Events are immutable first-class entities |
+| [ADR-032](ADR-032.md) | Accepted | Events are accepted before external integration delivery |
+| [ADR-033](ADR-033.md) | Accepted | Event broker is transport, never source of truth |
+| [ADR-034](ADR-034.md) | Accepted | Reactive Behaviors are a kernel primitive |
+| [ADR-035](ADR-035.md) | Accepted | Relations may own behavior |
+| [ADR-036](ADR-036.md) | Accepted | Graph Pattern Subscriptions are bounded and compiled |
+| [ADR-037](ADR-037.md) | Accepted | Graph Lenses bound execution context |
+| [ADR-038](ADR-038.md) | Accepted | Change Proposal is the privileged write primitive |
+| [ADR-039](ADR-039.md) | Accepted | Agents default to proposal-only writes |
+| [ADR-040](ADR-040.md) | Accepted | Execution Frames bound goals, permissions and budgets |
+| [ADR-041](ADR-041.md) | Accepted | Scenario fork/diff/promote is first-class |
+| [ADR-042](ADR-042.md) | Accepted | Capability Packs are the domain extension unit |
+| [ADR-043](ADR-043.md) | Accepted | Capability Packs are distributed as OCI artifacts |
+| [ADR-044](ADR-044.md) | Accepted | Third-party code is isolated from hot kernel |
+| [ADR-045](ADR-045.md) | Accepted | Every external dependency sits behind a port |
+| [ADR-046](ADR-046.md) | Accepted | Every critical port owns a conformance TCK |
+| [ADR-047](ADR-047.md) | Accepted | Vendor data types never cross adapter boundaries |
+| [ADR-048](ADR-048.md) | Accepted | Provider capabilities are negotiated explicitly |
+| [ADR-049](ADR-049.md) | Accepted | Derived stores must be rebuildable |
+| [ADR-050](ADR-050.md) | Accepted | Canonical provider-neutral export is mandatory |
+| [ADR-051](ADR-051.md) | Accepted | Provider migration is a supported operational workflow |
+| [ADR-052](ADR-052.md) | Accepted | Replaceability Level is an architecture fitness metric |

@@ -1,0 +1,25 @@
+{
+  "event_id": "01JEXAMPLE00000000000000001",
+  "tenant_id": "tenant_demo",
+  "stream_id": "artifact:sha256:deadbeef",
+  "event_type": "supplychain.sbom.ingested.v1",
+  "schema_version": 1,
+  "occurred_at": "2026-08-17T12:00:00Z",
+  "actor": {
+    "type": "service",
+    "id": "sbom-ingestor"
+  },
+  "correlation_id": "01JEXAMPLECORRELATION",
+  "causation_id": "01JEXAMPLEBUILD",
+  "command_id": null,
+  "frame_id": null,
+  "payload": {
+    "artifact_digest": "sha256:deadbeef",
+    "format": "cyclonedx",
+    "document_digest": "sha256:cafebabe",
+    "component_count": 42
+  },
+  "evidence_refs": [
+    "object://tenant_demo/evidence/sha256:cafebabe"
+  ]
+}

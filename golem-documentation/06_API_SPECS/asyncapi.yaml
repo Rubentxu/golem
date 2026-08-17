@@ -1,0 +1,51 @@
+asyncapi: 3.0.0
+info:
+  title: GOLEM Event Contract
+  version: 0.1.0
+channels:
+  domainEvents:
+    address: golem/{tenantId}/domain
+    messages:
+      event:
+        $ref: '#/components/messages/DomainEvent'
+  behaviorEvents:
+    address: golem/{tenantId}/behavior
+    messages:
+      event:
+        $ref: '#/components/messages/DomainEvent'
+operations:
+  receiveDomainEvent:
+    action: receive
+    channel:
+      $ref: '#/channels/domainEvents'
+components:
+  messages:
+    DomainEvent:
+      name: DomainEvent
+      payload:
+        $ref: '#/components/schemas/EventEnvelope'
+  schemas:
+    EventEnvelope:
+      type: object
+      required: [event_id, tenant_id, event_type, schema_version, occurred_at, actor, payload]
+      properties:
+        event_id: {type: string}
+        tenant_id: {type: string}
+        stream_id: {type: string}
+        event_type: {type: string}
+        schema_version: {type: integer, minimum: 1}
+        occurred_at: {type: string, format: date-time}
+        correlation_id: {type: string}
+        causation_id: {type: string}
+        command_id: {type: string}
+        frame_id: {type: string}
+        actor:
+          type: object
+          required: [type, id]
+          properties:
+            type: {type: string, enum: [human, service, agent]}
+            id: {type: string}
+        payload: {type: object}
+        evidence_refs:
+          type: array
+          items: {type: string}

@@ -1,0 +1,262 @@
+{
+  "ADR-001": {
+    "title": "Use Go for kernel and backend services",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-002": {
+    "title": "Hexagonal architecture is mandatory",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-003": {
+    "title": "Bounded contexts and SOLID over shared mega-models",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-004": {
+    "title": "Engineering Graph is the canonical domain model",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-005": {
+    "title": "Graph Journal is the authoritative causal history",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-006": {
+    "title": "Use CQRS-style command/query separation",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-007": {
+    "title": "Use cell-based SaaS architecture",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-008": {
+    "title": "Tenant context is mandatory end-to-end",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-009": {
+    "title": "Multi-region writes are spike-gated",
+    "status": "Proposed",
+    "date": "2026-08-17"
+  },
+  "ADR-010": {
+    "title": "Public API is OpenAPI-first",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-011": {
+    "title": "Typed internal RPC without domain leakage",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-012": {
+    "title": "NATS JetStream is reference event transport, not core dependency",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-013": {
+    "title": "Graph database choice requires benchmark gate",
+    "status": "Proposed",
+    "date": "2026-08-17"
+  },
+  "ADR-014": {
+    "title": "Large blobs use S3-compatible ObjectStore",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-015": {
+    "title": "Search is a rebuildable derived projection",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-016": {
+    "title": "Analytics is a rebuildable derived projection",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-017": {
+    "title": "OIDC is the identity boundary",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-018": {
+    "title": "Policy engine behind PolicyEvaluator port",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-019": {
+    "title": "OpenTelemetry is the observability contract",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-020": {
+    "title": "Use transactional outbox and idempotent inbox",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-021": {
+    "title": "Optimistic concurrency is the default mutation model",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-022": {
+    "title": "Artifacts are content-addressed",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-023": {
+    "title": "Support SPDX and CycloneDX SBOM",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-024": {
+    "title": "Use SLSA/in-toto compatible provenance",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-025": {
+    "title": "Sigstore is reference signing adapter",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-026": {
+    "title": "VEX is first-class security data",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-027": {
+    "title": "Web UI is an adapter, not the domain",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-028": {
+    "title": "Graph visualization is neighborhood-based",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-029": {
+    "title": "Third-party extension code uses WASM or remote plugins",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-030": {
+    "title": "Graph Journal combines state semantics and causal history",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-031": {
+    "title": "Events are immutable first-class entities",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-032": {
+    "title": "Events are accepted before external integration delivery",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-033": {
+    "title": "Event broker is transport, never source of truth",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-034": {
+    "title": "Reactive Behaviors are a kernel primitive",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-035": {
+    "title": "Relations may own behavior",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-036": {
+    "title": "Graph Pattern Subscriptions are bounded and compiled",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-037": {
+    "title": "Graph Lenses bound execution context",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-038": {
+    "title": "Change Proposal is the privileged write primitive",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-039": {
+    "title": "Agents default to proposal-only writes",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-040": {
+    "title": "Execution Frames bound goals, permissions and budgets",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-041": {
+    "title": "Scenario fork/diff/promote is first-class",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-042": {
+    "title": "Capability Packs are the domain extension unit",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-043": {
+    "title": "Capability Packs are distributed as OCI artifacts",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-044": {
+    "title": "Third-party code is isolated from hot kernel",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-045": {
+    "title": "Every external dependency sits behind a port",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-046": {
+    "title": "Every critical port owns a conformance TCK",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-047": {
+    "title": "Vendor data types never cross adapter boundaries",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-048": {
+    "title": "Provider capabilities are negotiated explicitly",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-049": {
+    "title": "Derived stores must be rebuildable",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-050": {
+    "title": "Canonical provider-neutral export is mandatory",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-051": {
+    "title": "Provider migration is a supported operational workflow",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  },
+  "ADR-052": {
+    "title": "Replaceability Level is an architecture fitness metric",
+    "status": "Accepted",
+    "date": "2026-08-17"
+  }
+}

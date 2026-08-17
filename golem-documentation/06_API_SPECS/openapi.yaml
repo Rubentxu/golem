@@ -1,0 +1,117 @@
+openapi: 3.1.0
+info:
+  title: GOLEM Public API
+  version: 0.1.0
+  description: Baseline public contract.
+servers:
+  - url: https://api.example.invalid/api/v1
+paths:
+  /projects:
+    get:
+      operationId: listProjects
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200': {description: Project page}
+    post:
+      operationId: createProject
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': {description: Command accepted}
+  /work-items/{id}:
+    get:
+      operationId: getWorkItem
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '200': {description: Work item}
+    patch:
+      operationId: updateWorkItem
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '202': {description: Update accepted}
+        '409': {description: Revision conflict}
+  /graph/neighborhood:
+    post:
+      operationId: graphNeighborhood
+      responses:
+        '200': {description: Bounded subgraph}
+  /trace/{id}:
+    get:
+      operationId: traceEntity
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '200': {description: Causal trace}
+  /artifacts/{digest}:
+    get:
+      operationId: getArtifact
+      parameters:
+        - name: digest
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200': {description: Artifact metadata and evidence}
+  /releases/{id}/gate:
+    post:
+      operationId: evaluateReleaseGate
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': {description: Evaluation accepted}
+  /proposals:
+    post:
+      operationId: createChangeProposal
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': {description: Proposal accepted}
+  /proposals/{id}/approve:
+    post:
+      operationId: approveProposal
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': {description: Approval accepted}
+  /scenarios:
+    post:
+      operationId: createScenario
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': {description: Scenario creation accepted}
+  /scenarios/{id}/diff:
+    get:
+      operationId: getScenarioDiff
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '200': {description: Scenario diff}
+components:
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      schema: {type: string}
+    EntityId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 8}
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      schema: {type: string}

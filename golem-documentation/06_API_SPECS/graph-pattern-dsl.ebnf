@@ -1,0 +1,16 @@
+pattern        = path, [ where_clause ] ;
+path           = node, { relationship, node } ;
+node           = "(", identifier, [ ":", type_name ], [ properties ], ")" ;
+relationship   = "-", "[", [ identifier, ":" ], type_name, "]", "->"
+               | "<-", "[", [ identifier, ":" ], type_name, "]", "-" ;
+properties     = "{", property_eq, { ",", property_eq }, "}" ;
+property_eq    = identifier, ":", literal ;
+where_clause   = "WHERE", predicate, { "AND", predicate } ;
+predicate      = operand, comparator, operand
+               | "NOT", predicate
+               | "NOT EXISTS", "{", path, [ where_clause ], "}" ;
+operand        = identifier, ".", identifier | literal ;
+comparator     = "=" | "<>" | "<" | "<=" | ">" | ">=" ;
+identifier     = letter, { letter | digit | "_" } ;
+type_name      = identifier ;
+literal        = string | number | "true" | "false" | "null" ;
