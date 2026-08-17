@@ -174,6 +174,12 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/search", s.handleSearch)
 	mux.HandleFunc("POST /api/v1/work-types", s.handleRegisterWorkType)
 	mux.HandleFunc("GET /api/v1/work-types/{name}", s.handleGetWorkType)
+	mux.HandleFunc("POST /api/v1/projects", s.handleCreateProject)
+	mux.HandleFunc("POST /api/v1/planning/iterations", s.handleCreateIteration)
+	mux.HandleFunc("POST /api/v1/planning/milestones", s.handleCreateMilestone)
+	mux.HandleFunc("GET /api/v1/planning/iterations/{id}/board", s.handleIterationBoard)
+	mux.HandleFunc("POST /api/v1/work-items/{id}/comments", s.handleAddComment)
+	mux.HandleFunc("GET /api/v1/work-items/{id}/events", s.handleItemEvents)
 	return mux
 }
 
@@ -258,6 +264,12 @@ func muxMatch(r *http.Request) (bool, string) {
 		{http.MethodGet, "/api/v1/search"},
 		{http.MethodPost, "/api/v1/work-types"},
 		{http.MethodGet, "/api/v1/work-types/{name}"},
+		{http.MethodPost, "/api/v1/projects"},
+		{http.MethodPost, "/api/v1/planning/iterations"},
+		{http.MethodPost, "/api/v1/planning/milestones"},
+		{http.MethodGet, "/api/v1/planning/iterations/{id}/board"},
+		{http.MethodPost, "/api/v1/work-items/{id}/comments"},
+		{http.MethodGet, "/api/v1/work-items/{id}/events"},
 	}
 	for _, rt := range routes {
 		if r.Method == rt.method {

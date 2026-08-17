@@ -34,6 +34,7 @@ const (
 	CmdUpdateWorkItem   = "work.update-work-item"
 	CmdLinkWorkItems    = "work.link-work-items"
 	CmdRegisterWorkType = "work.register-work-type"
+	CmdAddComment       = "work.add-comment"
 )
 
 // CanonicalRelation reports whether rel belongs to the GOLEM ontology
@@ -49,12 +50,18 @@ func CanonicalRelation(rel string) bool {
 	return false
 }
 
-// CreateWorkItem is the payload of CmdCreateWorkItem.
+// CreateWorkItem is the payload of CmdCreateWorkItem. ItemID and
+// External are importer-only escapes: normal callers leave them empty
+// (server-generated id); importers pass a stable id + provider identity
+// so re-imports are idempotent (command dedup) and traceable back to the
+// source system (GRAPH_MODEL ExternalIdentity).
 type CreateWorkItem struct {
-	Title    string         `json:"title"`
-	ItemType string         `json:"type"`
-	TypeName string         `json:"type_name,omitempty"` // registered WorkType
-	Fields   map[string]any `json:"fields,omitempty"`    // custom fields (typed items)
+	Title    string                      `json:"title"`
+	ItemType string                      `json:"type"`
+	TypeName string                      `json:"type_name,omitempty"`
+	Fields   map[string]any              `json:"fields,omitempty"`
+	ItemID   string                      `json:"item_id,omitempty"`  // importer-only
+	External domainwork.ExternalIdentity `json:"external,omitempty"` // importer-only
 }
 
 // UpdateWorkItem is the payload of CmdUpdateWorkItem. Nil fields are
@@ -67,6 +74,47 @@ type UpdateWorkItem struct {
 	Title           *string `json:"title,omitempty"`
 	Status          *string `json:"status,omitempty"`
 	ExpectedVersion *uint64 `json:"expected_version,omitempty"`
+}
+
+// AddComment is the payload of CmdAddComment.
+type AddComment struct {
+	ItemID string `json:"item_id"`
+	Body   string `json:"body"`
+}
+
+// AddCommentHandler returns the handler for CmdAddComment. The comment
+// is journaled on the item stream (immutable collaboration record); it
+// deliberately projects no graph node — history and search carry it.
+// Command dedup keeps retries single-comment (same command_id).
+func AddCommentHandler(gen ports.IDGenerator, journal ports.JournalStore) appcmd.Handler {
+	return func(ctx context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
+		p, ok := cmd.Payload.(AddComment)
+		if !ok {
+			return nil, errors.New("work: payload must be work.AddComment")
+		}
+		if strings.TrimSpace(p.ItemID) == "" {
+			return nil, ErrItemNotFound
+		}
+		if strings.TrimSpace(p.Body) == "" {
+			return nil, errors.New("work: comment body is mandatory")
+		}
+		stream := "workitem:" + p.ItemID
+		evs, err := journal.ReadStream(ctx, cmd.TenantID, stream, 0)
+		if err != nil {
+			return nil, err
+		}
+		if len(evs) == 0 {
+			return nil, ErrItemNotFound
+		}
+		return []appcmd.EventDraft{{
+			EventType:     domainwork.EventCommentAdded,
+			StreamID:      stream,
+			SchemaVersion: 1,
+			Payload: domainwork.CommentAdded{
+				ItemID: p.ItemID, CommentID: gen.NewID(), Body: strings.TrimSpace(p.Body),
+			},
+		}}, nil
+	}
 }
 
 // LinkWorkItems is the payload of CmdLinkWorkItems.
@@ -256,7 +304,10 @@ func CreateWorkItemHandler(gen ports.IDGenerator, graph ports.GraphStore) appcmd
 			status = def.Initial
 		}
 
-		itemID := gen.NewID()
+		itemID := strings.TrimSpace(p.ItemID)
+		if itemID == "" {
+			itemID = gen.NewID()
+		}
 		return []appcmd.EventDraft{{
 			EventType:     domainwork.EventItemCreated,
 			StreamID:      "workitem:" + itemID,
@@ -264,6 +315,7 @@ func CreateWorkItemHandler(gen ports.IDGenerator, graph ports.GraphStore) appcmd
 			Payload: domainwork.ItemCreated{
 				ItemID: itemID, Title: title, ItemType: typ,
 				TypeName: strings.TrimSpace(p.TypeName), Status: status, Fields: fields,
+				External: p.External,
 			},
 		}}, nil
 	}

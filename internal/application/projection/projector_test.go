@@ -79,7 +79,7 @@ func TestProjectItemLinkedUsesEventIDAsEdgeID(t *testing.T) {
 }
 
 func TestProjectUnknownEventIsSkipped(t *testing.T) {
-	m, err := (Projector{}).Project(mkEvent("planning.iteration.created.v1", map[string]any{"id": "it-1"}))
+	m, err := (Projector{}).Project(mkEvent("deployment.service.registered.v1", map[string]any{"id": "svc-1"}))
 	if err != nil {
 		t.Fatal(err)
 	}

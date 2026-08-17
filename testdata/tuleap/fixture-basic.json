@@ -1,0 +1,36 @@
+{
+  "projects": [
+    {"id": "101", "name": "Golem Kernel", "description": "Kernel migration pilot"}
+  ],
+  "trackers": [
+    {
+      "project": "101",
+      "name": "task",
+      "initial": "open",
+      "states": ["open", "in_progress", "done"],
+      "transitions": [
+        {"from": "open", "to": "in_progress"},
+        {"from": "in_progress", "to": "done"}
+      ],
+      "fields": [
+        {"name": "priority", "type": "string", "required": true}
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "project": "101", "tracker": "task", "id": "9001",
+      "title": "Journal append", "status": "done",
+      "fields": {"priority": "high"},
+      "comments": ["Imported from tracker 101"],
+      "links": []
+    },
+    {
+      "project": "101", "tracker": "task", "id": "9002",
+      "title": "Graph projection", "status": "open",
+      "fields": {"priority": "medium"},
+      "comments": [],
+      "links": [{"to": "9001", "relation": "DEPENDS_ON"}]
+    }
+  ]
+}

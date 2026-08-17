@@ -8,12 +8,13 @@ package work
 // against the type schema and Status starts at the workflow initial
 // state. Untyped items keep the legacy free-form behavior.
 type ItemCreated struct {
-	ItemID   string         `json:"item_id"`
-	Title    string         `json:"title"`
-	ItemType string         `json:"type"`
-	TypeName string         `json:"type_name,omitempty"`
-	Status   string         `json:"status"`
-	Fields   map[string]any `json:"fields,omitempty"`
+	ItemID   string           `json:"item_id"`
+	Title    string           `json:"title"`
+	ItemType string           `json:"type"`
+	TypeName string           `json:"type_name,omitempty"`
+	Status   string           `json:"status"`
+	Fields   map[string]any   `json:"fields,omitempty"`
+	External ExternalIdentity `json:"external,omitempty"`
 }
 
 // ItemUpdated is the payload of work.item.updated.v1. Nil fields are
@@ -32,11 +33,29 @@ type ItemLinked struct {
 	Relation string `json:"relation"`
 }
 
+// CommentAdded is the payload of work.comment.added.v1. Comments live in
+// the journal (immutable collaboration record); the graph stays
+// structural — no Comment nodes — and full text remains queryable via
+// the item history and the search projection.
+type CommentAdded struct {
+	ItemID    string `json:"item_id"`
+	CommentID string `json:"comment_id"`
+	Body      string `json:"body"`
+}
+
+// ExternalIdentity records the provider identity of imported entities
+// (GRAPH_MODEL: external entities use GOLEM ID + ExternalIdentity).
+type ExternalIdentity struct {
+	Provider   string `json:"provider,omitempty"`
+	ExternalID string `json:"external_id,omitempty"`
+}
+
 // Event type names of this context.
 const (
 	EventItemCreated    = "work.item.created.v1"
 	EventItemUpdated    = "work.item.updated.v1"
 	EventItemLinked     = "work.item.linked.v1"
+	EventCommentAdded   = "work.comment.added.v1"
 	EventTypeRegistered = "work.type.registered.v1"
 )
 

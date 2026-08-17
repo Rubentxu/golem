@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Rubentxu/golem/internal/planning"
 	"github.com/Rubentxu/golem/internal/ports"
+	"github.com/Rubentxu/golem/internal/projects"
 	"github.com/Rubentxu/golem/internal/requirements"
 	"github.com/Rubentxu/golem/internal/work"
 )
@@ -70,6 +72,53 @@ func (Projector) Project(env ports.RawEvent) ([]ports.SearchDoc, error) {
 			Kind:   "Requirement",
 			Title:  p.Title,
 			Text:   p.Title + " " + p.Statement + " " + p.Status,
+		}}, nil
+	case work.EventCommentAdded:
+		var p work.CommentAdded
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, fmt.Errorf("search %s: %w", env.EventType, err)
+		}
+		if p.CommentID == "" {
+			return nil, fmt.Errorf("search %s: empty comment_id", env.EventType)
+		}
+		return []ports.SearchDoc{{
+			ID:     p.CommentID,
+			Tenant: ports.TenantID(env.TenantID),
+			Kind:   "Comment",
+			Title:  "Comment on " + p.ItemID,
+			Text:   p.Body,
+		}}, nil
+
+	case projects.EventProjectCreated:
+		var p projects.ProjectCreated
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, fmt.Errorf("search %s: %w", env.EventType, err)
+		}
+		if p.ProjectID == "" {
+			return nil, fmt.Errorf("search %s: empty project_id", env.EventType)
+		}
+		return []ports.SearchDoc{{
+			ID:     p.ProjectID,
+			Tenant: ports.TenantID(env.TenantID),
+			Kind:   "Project",
+			Title:  p.Name,
+			Text:   p.Name + " " + p.Description,
+		}}, nil
+
+	case planning.EventIterationCreated:
+		var p planning.IterationCreated
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, fmt.Errorf("search %s: %w", env.EventType, err)
+		}
+		if p.IterationID == "" {
+			return nil, fmt.Errorf("search %s: empty iteration_id", env.EventType)
+		}
+		return []ports.SearchDoc{{
+			ID:     p.IterationID,
+			Tenant: ports.TenantID(env.TenantID),
+			Kind:   "Iteration",
+			Title:  p.Name,
+			Text:   p.Name + " iteration sprint",
 		}}, nil
 	}
 	return nil, nil

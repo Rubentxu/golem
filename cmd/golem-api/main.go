@@ -17,6 +17,8 @@ import (
 	searchmem "github.com/Rubentxu/golem/adapters/search/memstore"
 	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
 	"github.com/Rubentxu/golem/internal/api/httpapi"
+	appplanning "github.com/Rubentxu/golem/internal/application/planning"
+	appprojects "github.com/Rubentxu/golem/internal/application/projects"
 	appreq "github.com/Rubentxu/golem/internal/application/requirements"
 	"github.com/Rubentxu/golem/internal/application/runtime"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
@@ -50,7 +52,12 @@ func main() {
 	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, rt.Graph))
 	rt.Bus.Register(appwork.CmdUpdateWorkItem, appwork.UpdateWorkItemHandler(rt.Journal, rt.Graph))
 	rt.Bus.Register(appwork.CmdLinkWorkItems, appwork.LinkWorkItemsHandler(rt.Graph))
+	rt.Bus.Register(appwork.CmdRegisterWorkType, appwork.RegisterWorkTypeHandler())
+	rt.Bus.Register(appwork.CmdAddComment, appwork.AddCommentHandler(rt.IDs, rt.Journal))
 	rt.Bus.Register(appreq.CmdCreateRequirement, appreq.CreateRequirementHandler(rt.IDs))
+	rt.Bus.Register(appprojects.CmdCreateProject, appprojects.CreateProjectHandler(rt.IDs))
+	rt.Bus.Register(appplanning.CmdCreateIteration, appplanning.CreateIterationHandler(rt.IDs))
+	rt.Bus.Register(appplanning.CmdCreateMilestone, appplanning.CreateMilestoneHandler(rt.IDs))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

@@ -10,8 +10,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/Rubentxu/golem/internal/planning"
 	"github.com/Rubentxu/golem/internal/ports"
+	"github.com/Rubentxu/golem/internal/projects"
 	"github.com/Rubentxu/golem/internal/requirements"
 	"github.com/Rubentxu/golem/internal/work"
 )
@@ -21,6 +24,9 @@ const (
 	KindWorkItem    = "WorkItem"
 	KindRequirement = "Requirement"
 	KindWorkType    = "WorkType"
+	KindProject     = "Project"
+	KindIteration   = "Iteration"
+	KindMilestone   = "Milestone"
 )
 
 // Projector maps journal events to graph mutations. Unknown event types
@@ -49,6 +55,10 @@ func (Projector) Project(env ports.RawEvent) (ports.GraphMutation, error) {
 		}
 		if p.TypeName != "" {
 			attrs["type_name"] = p.TypeName
+		}
+		if p.External.Provider != "" {
+			attrs["external_provider"] = p.External.Provider
+			attrs["external_id"] = p.External.ExternalID
 		}
 		for k, v := range p.Fields {
 			// Namespace custom fields to avoid collisions with canonical
@@ -88,6 +98,45 @@ func (Projector) Project(env ports.RawEvent) (ports.GraphMutation, error) {
 			"title":     p.Title,
 			"statement": p.Statement,
 			"status":    p.Status,
+		}))
+
+	case projects.EventProjectCreated:
+		var p projects.ProjectCreated
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
+		}
+		if p.ProjectID == "" {
+			return m, fmt.Errorf("projection %s: empty project_id", env.EventType)
+		}
+		attrs := map[string]any{"name": p.Name, "description": p.Description}
+		if p.External.Provider != "" {
+			attrs["external_provider"] = p.External.Provider
+			attrs["external_id"] = p.External.ExternalID
+		}
+		m.Ops = append(m.Ops, nodeUpsert(p.ProjectID, KindProject, attrs))
+
+	case planning.EventIterationCreated:
+		var p planning.IterationCreated
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
+		}
+		if p.IterationID == "" {
+			return m, fmt.Errorf("projection %s: empty iteration_id", env.EventType)
+		}
+		m.Ops = append(m.Ops, nodeUpsert(p.IterationID, KindIteration, map[string]any{
+			"name": p.Name, "start": p.Start.UTC().Format(time.RFC3339), "end": p.End.UTC().Format(time.RFC3339),
+		}))
+
+	case planning.EventMilestoneCreated:
+		var p planning.MilestoneCreated
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
+		}
+		if p.MilestoneID == "" {
+			return m, fmt.Errorf("projection %s: empty milestone_id", env.EventType)
+		}
+		m.Ops = append(m.Ops, nodeUpsert(p.MilestoneID, KindMilestone, map[string]any{
+			"name": p.Name, "target_date": p.TargetDate.UTC().Format(time.RFC3339),
 		}))
 
 	case work.EventTypeRegistered:
