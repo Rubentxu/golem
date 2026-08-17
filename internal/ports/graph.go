@@ -19,12 +19,27 @@ type GraphCapabilities struct {
 
 // GraphMutation is an atomic set of graph operations scoped to one tenant.
 type GraphMutation struct {
-	TenantID string
+	TenantID TenantID
 	Ops      []GraphOp
 }
 
-// GraphOp is a single node/edge operation. Kind is one of "upsert_node",
-// "remove_node", "upsert_edge", "remove_edge"; Target is the entity ID.
+// Graph operation kinds.
+const (
+	OpUpsertNode = "upsert_node"
+	OpRemoveNode = "remove_node"
+	OpUpsertEdge = "upsert_edge"
+	OpRemoveEdge = "remove_edge"
+)
+
+// GraphOp is a single node/edge operation.
+//
+// Canonical Data keys:
+//
+//	upsert_node: "kind" (string), "attributes" (map)
+//	upsert_edge: "type", "source", "target" (strings), "attributes" (map)
+//
+// Target is the node or edge ID. Upserts merge attributes and increment
+// revisions; kind and type are immutable.
 type GraphOp struct {
 	Kind   string
 	Target string
@@ -35,7 +50,7 @@ type GraphOp struct {
 // tenant, roots and explicit limits (max depth, max nodes/edges, deadline
 // at the context level).
 type NeighborhoodQuery struct {
-	TenantID string
+	TenantID TenantID
 	Roots    []string
 	MaxDepth int
 	MaxNodes int
