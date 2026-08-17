@@ -25,6 +25,7 @@ import (
 	"github.com/Rubentxu/golem/internal/application/command"
 	"github.com/Rubentxu/golem/internal/application/outbox"
 	"github.com/Rubentxu/golem/internal/application/projection"
+	"github.com/Rubentxu/golem/internal/application/search"
 	"github.com/Rubentxu/golem/internal/clock"
 	"github.com/Rubentxu/golem/internal/ids"
 	"github.com/Rubentxu/golem/internal/obs"
@@ -35,6 +36,7 @@ import (
 const (
 	ProjectionCheckpoint = "projection"
 	PublishCheckpoint    = outbox.CheckpointKey
+	SearchCheckpoint     = "search"
 )
 
 // ErrMissingDependency reports an unwired port at boot.
@@ -48,8 +50,10 @@ type Runtime struct {
 	Registry   ports.CommandRegistry
 	Transport  ports.EventTransport
 	Checkpoint ports.CheckpointStore
+	Search     ports.SearchIndex // nil disables the search loop
 	Bus        *command.Bus
 	Projector  projection.Projector
+	SearchProj search.Projector
 	Clock      ports.Clock
 	IDs        ports.IDGenerator
 	obs        ports.Observability
@@ -58,13 +62,16 @@ type Runtime struct {
 // Options wires a Runtime. Journal, Graph, Registry, Transport and
 // Checkpoint are required (the host selects adapters, ADR-045/047);
 // Clock and IDs default to the reference implementations. Obs is the
-// observability bundle (zero value = no-ops).
+// observability bundle (zero value = no-ops). Search is optional: nil
+// disables the search tail loop (search is a derived projection,
+// ADR-015).
 type Options struct {
 	Journal    ports.JournalStore
 	Graph      ports.GraphStore
 	Registry   ports.CommandRegistry
 	Transport  ports.EventTransport
 	Checkpoint ports.CheckpointStore
+	Search     ports.SearchIndex
 	Clock      ports.Clock
 	IDs        ports.IDGenerator
 	Obs        ports.Observability
@@ -93,8 +100,10 @@ func New(opts Options) (*Runtime, error) {
 		Registry:   opts.Registry,
 		Transport:  opts.Transport,
 		Checkpoint: opts.Checkpoint,
+		Search:     opts.Search,
 		Bus:        command.NewBus(opts.Journal, opts.Registry, gen, clk).WithObservability(o),
 		Projector:  projection.Projector{},
+		SearchProj: search.Projector{},
 		Clock:      clk,
 		IDs:        gen,
 		obs:        o,
@@ -157,6 +166,47 @@ func (rt *Runtime) PublishBatch(ctx context.Context, batchSize int) (int, error)
 	return n, err
 }
 
+// SearchBatch tails the journal into the search index once (no-op when
+// no SearchIndex is wired). Returns indexed documents (0 = caught up).
+func (rt *Runtime) SearchBatch(ctx context.Context, batchSize int) (int, error) {
+	if rt.Search == nil {
+		return 0, nil
+	}
+	from, err := rt.Checkpoint.Load(ctx, SearchCheckpoint)
+	if err != nil {
+		return 0, fmt.Errorf("search checkpoint: %w", err)
+	}
+	batch, last, err := rt.Journal.Replay(ctx, from, batchSize)
+	if err != nil {
+		return 0, fmt.Errorf("search replay from %d: %w", from, err)
+	}
+	if len(batch) == 0 {
+		return 0, nil
+	}
+	indexed := 0
+	for _, env := range batch {
+		docs, err := rt.SearchProj.Project(env)
+		if err != nil {
+			rt.obs.Logger.Error(ctx, "search project failed",
+				ports.A("event_id", env.EventID), ports.A("error", err.Error()))
+			return indexed, fmt.Errorf("search project %s: %w", env.EventID, err)
+		}
+		if len(docs) == 0 {
+			continue
+		}
+		if err := rt.Search.Index(ctx, docs); err != nil {
+			return indexed, fmt.Errorf("search index %s: %w", env.EventID, err)
+		}
+		indexed += len(docs)
+	}
+	if err := rt.Checkpoint.Save(ctx, SearchCheckpoint, last); err != nil {
+		return indexed, fmt.Errorf("search checkpoint save %d: %w", last, err)
+	}
+	rt.obs.Meter.Counter("golem.search.indexed").Add(ctx, int64(indexed))
+	rt.recordLag(ctx, "search", last)
+	return indexed, nil
+}
+
 // Run drives both tail loops until ctx is cancelled. Interval paces
 // polling between caught-up cycles. Run returns ctx.Err() on graceful
 // shutdown.
@@ -177,7 +227,11 @@ func (rt *Runtime) Run(ctx context.Context, batchSize int, interval time.Duratio
 				if err != nil {
 					return err
 				}
-				if n == 0 && m == 0 {
+				s, err := rt.SearchBatch(ctx, batchSize)
+				if err != nil {
+					return err
+				}
+				if n == 0 && m == 0 && s == 0 {
 					break
 				}
 			}

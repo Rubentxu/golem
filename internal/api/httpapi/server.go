@@ -109,6 +109,12 @@ type GraphReader interface {
 	GetNode(ctx context.Context, tenant ports.TenantID, nodeID string) (ports.Node, error)
 }
 
+// SearchReader runs tenant-scoped search queries (ADR-015 derived
+// projection).
+type SearchReader interface {
+	Query(ctx context.Context, q ports.SearchQuery) (ports.SearchPage, error)
+}
+
 // StreamVersionReader reads the authoritative version of a stream from
 // the journal (ADR-021: optimistic concurrency is checked against the
 // source of truth, not the eventual projection).
@@ -121,6 +127,7 @@ type Server struct {
 	commands CommandSubmitter
 	graph    GraphReader
 	streams  StreamVersionReader
+	search   SearchReader
 	obs      ports.Observability
 
 	idsOnce sync.Once
@@ -131,6 +138,12 @@ type Server struct {
 // no-ops).
 func New(commands CommandSubmitter, graph GraphReader, streams StreamVersionReader) *Server {
 	return &Server{commands: commands, graph: graph, streams: streams, obs: obs.Fill(ports.Observability{})}
+}
+
+// WithSearch sets the search reader (enables GET /api/v1/search).
+func (s *Server) WithSearch(r SearchReader) *Server {
+	s.search = r
+	return s
 }
 
 // WithObservability sets the instrumentation bundle (chaining).
@@ -158,6 +171,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/requirements", s.handleCreateRequirement)
 	mux.HandleFunc("GET /api/v1/requirements/{id}", s.handleGetRequirement)
 	mux.HandleFunc("POST /api/v1/graph/neighborhood", s.handleNeighborhood)
+	mux.HandleFunc("GET /api/v1/search", s.handleSearch)
 	return mux
 }
 
@@ -239,6 +253,7 @@ func muxMatch(r *http.Request) (bool, string) {
 		{http.MethodPost, "/api/v1/requirements"},
 		{http.MethodGet, "/api/v1/requirements/{id}"},
 		{http.MethodPost, "/api/v1/graph/neighborhood"},
+		{http.MethodGet, "/api/v1/search"},
 	}
 	for _, rt := range routes {
 		if r.Method == rt.method {

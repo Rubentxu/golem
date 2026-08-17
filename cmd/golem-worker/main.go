@@ -22,6 +22,7 @@ import (
 	journalmem "github.com/Rubentxu/golem/adapters/journal/memstore"
 	otelobs "github.com/Rubentxu/golem/adapters/observability/otel"
 	registrymem "github.com/Rubentxu/golem/adapters/registry/memstore"
+	searchmem "github.com/Rubentxu/golem/adapters/search/memstore"
 	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
 	"github.com/Rubentxu/golem/internal/application/runtime"
 )
@@ -39,6 +40,7 @@ func main() {
 		Registry:   registrymem.NewRegistry(),
 		Transport:  transportmem.NewTransport(),
 		Checkpoint: checkpointmem.NewCheckpoints(),
+		Search:     searchmem.NewSearch(),
 		Obs:        obsbundle,
 	})
 	if err != nil {

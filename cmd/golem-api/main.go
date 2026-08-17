@@ -14,6 +14,7 @@ import (
 	journalmem "github.com/Rubentxu/golem/adapters/journal/memstore"
 	otelobs "github.com/Rubentxu/golem/adapters/observability/otel"
 	registrymem "github.com/Rubentxu/golem/adapters/registry/memstore"
+	searchmem "github.com/Rubentxu/golem/adapters/search/memstore"
 	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
 	"github.com/Rubentxu/golem/internal/api/httpapi"
 	appreq "github.com/Rubentxu/golem/internal/application/requirements"
@@ -40,6 +41,7 @@ func main() {
 		Registry:   registrymem.NewRegistry(),
 		Transport:  transportmem.NewTransport(),
 		Checkpoint: checkpointmem.NewCheckpoints(),
+		Search:     searchmem.NewSearch(),
 		Obs:        obsbundle,
 	})
 	if err != nil {
@@ -66,8 +68,11 @@ func main() {
 		addr = ":8080"
 	}
 	srv := &http.Server{
-		Addr:              addr,
-		Handler:           httpapi.New(rt.Bus, rt.Graph, rt.Journal).WithObservability(obsbundle).Handler(),
+		Addr: addr,
+		Handler: httpapi.New(rt.Bus, rt.Graph, rt.Journal).
+			WithSearch(rt.Search).
+			WithObservability(obsbundle).
+			Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

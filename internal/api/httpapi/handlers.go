@@ -238,6 +238,67 @@ func (s *Server) handleCreateRequirement(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// ---- GET /api/v1/search ----
+
+type searchHitDTO struct {
+	ID    string  `json:"id"`
+	Kind  string  `json:"kind"`
+	Title string  `json:"title"`
+	Score float64 `json:"score"`
+}
+
+type searchPageDTO struct {
+	Hits       []searchHitDTO `json:"hits"`
+	NextCursor string         `json:"next_cursor,omitempty"`
+}
+
+func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
+	corr := s.correlationOf(r)
+	tenant, _, ok := tenantActor(r)
+	if !ok {
+		s.problem(w, http.StatusBadRequest, CodeMissingTenant, "X-Golem-Tenant header is mandatory", corr)
+		return
+	}
+	if s.search == nil {
+		s.problem(w, http.StatusNotImplemented, CodeInternal, "search is not configured in this deployment", corr)
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+	kind := q2s(r, "kind")
+	limit := 20
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 || n > 100 {
+			s.problem(w, http.StatusBadRequest, CodeInvalidArgument, "limit must be an integer in (0, 100]", corr)
+			return
+		}
+		limit = n
+	}
+
+	page, err := s.search.Query(r.Context(), ports.SearchQuery{
+		Tenant: tenant,
+		Q:      q,
+		Kind:   kind,
+		Cursor: r.URL.Query().Get("cursor"),
+		Limit:  limit,
+	})
+	if err != nil {
+		s.problem(w, http.StatusBadRequest, CodeInvalidArgument, "search query rejected: "+err.Error(), corr)
+		return
+	}
+
+	out := searchPageDTO{Hits: make([]searchHitDTO, 0, len(page.Hits)), NextCursor: page.NextCursor}
+	for _, h := range page.Hits {
+		out.Hits = append(out.Hits, searchHitDTO{ID: h.Doc.ID, Kind: h.Doc.Kind, Title: h.Doc.Title, Score: h.Score})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func q2s(r *http.Request, key string) string {
+	return strings.TrimSpace(r.URL.Query().Get(key))
+}
+
 // ---- shared error mapping ----
 
 func (s *Server) writeCommandError(w http.ResponseWriter, err error, corr string) {
