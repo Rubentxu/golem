@@ -2,6 +2,7 @@ package tck
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -142,6 +143,46 @@ func RunJournalStoreTCK(t *testing.T, newStore func() ports.JournalStore) {
 		if err != nil || len(evs) != 0 || last != 3 {
 			t.Fatalf("exhausted: %d events, checkpoint %d, err %v", len(evs), last, err)
 		}
+	})
+
+	t.Run("conditional append enforces optimistic concurrency", func(t *testing.T) {
+		s := newStore()
+		ctx := context.Background()
+		if _, err := s.Append(ctx, []ports.RawEvent{mk(1), mk(2)}); err != nil {
+			t.Fatal(err)
+		}
+		exp := ports.StreamVersion{TenantID: "t_tck", StreamID: "workitem:wi-1"}
+
+		// Stale expectation: rejected, nothing persisted.
+		stale := exp
+		stale.Version = 1
+		next := mk(3)
+		if _, err := s.AppendIf(ctx, stale, []ports.RawEvent{next}); !errors.Is(err, ports.ErrVersionConflict) {
+			t.Fatalf("err = %v, want ErrVersionConflict", err)
+		}
+		evs, _, _ := s.Replay(ctx, 0, 0)
+		if len(evs) != 2 {
+			t.Fatalf("conflict persisted events: %d", len(evs))
+		}
+
+		// Correct expectation: accepted, stream advances.
+		exp.Version = 2
+		res, err := s.AppendIf(ctx, exp, []ports.RawEvent{next})
+		if err != nil || res[0].Duplicate {
+			t.Fatalf("conditional append: %+v, %v", res, err)
+		}
+		evs, _, _ = s.Replay(ctx, 0, 0)
+		if len(evs) != 3 {
+			t.Fatalf("events = %d, want 3", len(evs))
+		}
+
+		// Zero expectation on a fresh stream: create semantics.
+		fresh := ports.StreamVersion{TenantID: "t_tck", StreamID: "workitem:wi-9"}
+		res, err = s.AppendIf(ctx, fresh, []ports.RawEvent{mk(4)})
+		if err != nil {
+			t.Fatalf("fresh conditional append: %v", err)
+		}
+		_ = res
 	})
 
 	t.Run("read stream is scoped by tenant and stream", func(t *testing.T) {

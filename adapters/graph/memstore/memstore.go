@@ -239,6 +239,25 @@ loop:
 	return ports.Subgraph{Nodes: resNodes, Edges: resEdges}, nil
 }
 
+// GetNode is a tenant-scoped point read.
+func (s *Store) GetNode(ctx context.Context, tenant ports.TenantID, nodeID string) (ports.Node, error) {
+	_ = ctx
+	if tenant == "" {
+		return ports.Node{}, ports.ErrEmptyTenant
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	g, ok := s.tenants[tenant]
+	if !ok {
+		return ports.Node{}, ports.ErrNodeNotFound
+	}
+	n, ok := g.nodes[nodeID]
+	if !ok {
+		return ports.Node{}, ports.ErrNodeNotFound
+	}
+	return copyNode(n), nil
+}
+
 func (g *tenantGraph) removeNode(id string) {
 	for eid := range g.adj[id] {
 		g.removeEdge(eid)

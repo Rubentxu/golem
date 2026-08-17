@@ -88,5 +88,9 @@ type Subgraph struct {
 type GraphStore interface {
 	Apply(ctx context.Context, tx GraphMutation) (Revision, error)
 	Neighborhood(ctx context.Context, q NeighborhoodQuery) (Subgraph, error)
+	// GetNode is a bounded point read of one node. Tenant-scoped; returns
+	// ErrNodeNotFound when the node does not exist in the tenant graph.
+	// (Query-safety bounds apply to traversals, not point lookups.)
+	GetNode(ctx context.Context, tenant TenantID, nodeID string) (Node, error)
 	Capabilities(ctx context.Context) GraphCapabilities
 }

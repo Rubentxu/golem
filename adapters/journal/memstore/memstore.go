@@ -40,7 +40,28 @@ func (s *Store) Append(ctx context.Context, events []ports.RawEvent) ([]ports.Ap
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.appendLocked(events)
+}
 
+// AppendIf is the conditional append of ADR-021: it persists only when
+// the stream currently holds exactly expected.Version events; otherwise
+// it fails with ports.ErrVersionConflict and persists nothing.
+func (s *Store) AppendIf(ctx context.Context, expected ports.StreamVersion, events []ports.RawEvent) ([]ports.AppendResult, error) {
+	_ = ctx
+	if len(events) == 0 {
+		return nil, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if current := uint64(len(s.streams[streamKey(string(expected.TenantID), expected.StreamID)])); current != expected.Version {
+		return nil, ports.ErrVersionConflict
+	}
+	return s.appendLocked(events)
+}
+
+// appendLocked validates the batch then appends; caller holds s.mu.
+func (s *Store) appendLocked(events []ports.RawEvent) ([]ports.AppendResult, error) {
 	// Validate the whole batch before mutating anything: all-or-nothing.
 	for i := range events {
 		if err := validate(events[i]); err != nil {

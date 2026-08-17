@@ -16,6 +16,10 @@ var (
 	ErrZeroTimestamp    = errors.New("ports: occurred_at is mandatory")
 	ErrInvalidEventType = errors.New("ports: event_type must be <context>.<entity>.<verb>.v<major>")
 
+	// ErrVersionConflict reports a failed optimistic-concurrency check:
+	// the stream moved since the caller read it (ADR-021).
+	ErrVersionConflict = errors.New("ports: stream version conflict")
+
 	// Graph mutation errors.
 	ErrEmptyMutation    = errors.New("ports: empty graph mutation")
 	ErrInvalidOp        = errors.New("ports: invalid graph op")

@@ -25,16 +25,29 @@ type AppendResult struct {
 	Duplicate bool
 }
 
+// StreamVersion identifies a stream state for optimistic concurrency:
+// Version is the number of events already in the stream (ADR-021).
+type StreamVersion struct {
+	TenantID TenantID
+	StreamID string
+	Version  uint64
+}
+
 // JournalStore is the authoritative causal history port (ADR-005).
 //
 // Contract:
 //   - Append is atomic per batch: either all new events are persisted or
 //     none; already-known event_ids are idempotent no-ops.
+//   - AppendIf is the conditional form: it succeeds only when the stream
+//     currently holds exactly expected.Version events, else fails with
+//     ErrVersionConflict without persisting anything. This is the kernel
+//     optimistic-concurrency primitive (ADR-021).
 //   - Replay returns events with position > from, in position order, and
 //     the position of the last returned event (a checkpoint).
 //   - Event acceptance never depends on external sinks (ADR-032).
 type JournalStore interface {
 	Append(ctx context.Context, events []RawEvent) ([]AppendResult, error)
+	AppendIf(ctx context.Context, expected StreamVersion, events []RawEvent) ([]AppendResult, error)
 	ReadStream(ctx context.Context, tenant TenantID, streamID string, fromVersion uint64) ([]RawEvent, error)
 	Replay(ctx context.Context, from StreamPosition, limit int) ([]RawEvent, StreamPosition, error)
 }

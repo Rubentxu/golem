@@ -15,6 +15,7 @@ import (
 	registrymem "github.com/Rubentxu/golem/adapters/registry/memstore"
 	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
 	"github.com/Rubentxu/golem/internal/api/httpapi"
+	appreq "github.com/Rubentxu/golem/internal/application/requirements"
 	"github.com/Rubentxu/golem/internal/application/runtime"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
 )
@@ -35,12 +36,15 @@ func TestHTTPVerticalSlice(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs))
+	rt.Bus.Register(appwork.CmdUpdateWorkItem, appwork.UpdateWorkItemHandler(rt.Journal))
+	rt.Bus.Register(appwork.CmdLinkWorkItems, appwork.LinkWorkItemsHandler(rt.Graph))
+	rt.Bus.Register(appreq.CmdCreateRequirement, appreq.CreateRequirementHandler(rt.IDs))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() { _ = rt.Run(ctx, 10, 5*time.Millisecond) }()
 
-	srv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph).Handler())
+	srv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).Handler())
 	defer srv.Close()
 
 	post := func(tenant, idemKey, body string) (int, httpapi.Receipt) {

@@ -35,6 +35,21 @@ func (f *fakeGraph) Neighborhood(_ context.Context, q ports.NeighborhoodQuery) (
 	return f.sub, f.err
 }
 
+func (f *fakeGraph) GetNode(_ context.Context, _ ports.TenantID, _ string) (ports.Node, error) {
+	if len(f.sub.Nodes) == 0 {
+		return ports.Node{}, ports.ErrNodeNotFound
+	}
+	return f.sub.Nodes[0], nil
+}
+
+type fakeStreams struct {
+	events []ports.RawEvent
+}
+
+func (f *fakeStreams) ReadStream(_ context.Context, _ ports.TenantID, _ string, _ uint64) ([]ports.RawEvent, error) {
+	return f.events, nil
+}
+
 func do(t *testing.T, h http.Handler, method, target, tenant, idemKey, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
@@ -57,7 +72,7 @@ func decode(t *testing.T, rec *httptest.ResponseRecorder, v any) {
 }
 
 func TestCreateWorkItemValidation(t *testing.T) {
-	h := New(&fakeCommands{}, &fakeGraph{}).Handler()
+	h := New(&fakeCommands{}, &fakeGraph{}, &fakeStreams{}).Handler()
 
 	cases := []struct {
 		name   string
@@ -91,7 +106,7 @@ func TestCreateWorkItemHappyPath(t *testing.T) {
 	cmds := &fakeCommands{repl: func(c command.Command) (ports.CommandReceipt, error) {
 		return ports.CommandReceipt{CommandID: c.CommandID, TenantID: c.TenantID, EventIDs: []string{"ev1"}, Position: 7}, nil
 	}}
-	h := New(cmds, &fakeGraph{}).Handler()
+	h := New(cmds, &fakeGraph{}, &fakeStreams{}).Handler()
 
 	rec := do(t, h, http.MethodPost, "/api/v1/work-items", "t1", "client-key-42", `{"title":"Slice","type":"task"}`)
 	if rec.Code != http.StatusAccepted {
@@ -111,7 +126,7 @@ func TestCreateWorkItemHappyPath(t *testing.T) {
 }
 
 func TestNeighborhoodBoundsEnforced(t *testing.T) {
-	h := New(&fakeCommands{}, &fakeGraph{}).Handler()
+	h := New(&fakeCommands{}, &fakeGraph{}, &fakeStreams{}).Handler()
 
 	cases := []struct {
 		name   string
@@ -143,7 +158,7 @@ func TestNeighborhoodReturnsSubgraphDTO(t *testing.T) {
 	g := &fakeGraph{sub: ports.Subgraph{
 		Nodes: []ports.Node{{ID: "wi-1", Kind: "WorkItem", Revision: 1, Attributes: map[string]any{"title": "t"}}},
 	}}
-	h := New(&fakeCommands{}, g).Handler()
+	h := New(&fakeCommands{}, g, &fakeStreams{}).Handler()
 
 	rec := do(t, h, http.MethodPost, "/api/v1/graph/neighborhood", "t1", "",
 		`{"roots":["wi-1"],"max_depth":1,"max_nodes":10,"max_edges":10}`)

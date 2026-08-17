@@ -12,12 +12,14 @@ import (
 	"strings"
 
 	"github.com/Rubentxu/golem/internal/ports"
+	"github.com/Rubentxu/golem/internal/requirements"
 	"github.com/Rubentxu/golem/internal/work"
 )
 
 // NodeKind constants used by the kernel projection.
 const (
-	KindWorkItem = "WorkItem"
+	KindWorkItem    = "WorkItem"
+	KindRequirement = "Requirement"
 )
 
 // Projector maps journal events to graph mutations. Unknown event types
@@ -63,6 +65,20 @@ func (Projector) Project(env ports.RawEvent) (ports.GraphMutation, error) {
 		if len(attrs) > 0 {
 			m.Ops = append(m.Ops, nodeUpsert(p.ItemID, KindWorkItem, attrs))
 		}
+
+	case requirements.EventRequirementCreated:
+		var p requirements.RequirementCreated
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
+		}
+		if p.RequirementID == "" {
+			return m, fmt.Errorf("projection %s: empty requirement_id", env.EventType)
+		}
+		m.Ops = append(m.Ops, nodeUpsert(p.RequirementID, KindRequirement, map[string]any{
+			"title":     p.Title,
+			"statement": p.Statement,
+			"status":    p.Status,
+		}))
 
 	case work.EventItemLinked:
 		var p work.ItemLinked

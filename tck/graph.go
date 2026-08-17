@@ -126,6 +126,24 @@ func RunGraphStoreTCK(t *testing.T, newStore func() ports.GraphStore) {
 		}
 	})
 
+	t.Run("point read is tenant scoped", func(t *testing.T) {
+		s := newStore()
+		apply(t, s, "t1", upsertNode("wi-1", "WorkItem", map[string]any{"title": "x"}))
+		n, err := s.GetNode(context.Background(), ports.TenantID("t1"), "wi-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n.Kind != "WorkItem" || n.Attributes["title"] != "x" {
+			t.Fatalf("node = %+v", n)
+		}
+		if _, err := s.GetNode(context.Background(), ports.TenantID("t1"), "ghost"); !errors.Is(err, ports.ErrNodeNotFound) {
+			t.Fatalf("err = %v, want ErrNodeNotFound", err)
+		}
+		if _, err := s.GetNode(context.Background(), ports.TenantID("t2"), "wi-1"); !errors.Is(err, ports.ErrNodeNotFound) {
+			t.Fatalf("cross-tenant read: err = %v, want ErrNodeNotFound", err)
+		}
+	})
+
 	t.Run("removing a node removes incident edges", func(t *testing.T) {
 		s := newStore()
 		apply(t, s, "t1",

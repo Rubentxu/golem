@@ -45,13 +45,15 @@ type Command struct {
 
 // EventDraft is a domain-authored event awaiting envelope assignment. The
 // bus assigns identity, time, tenant, actor and correlation so handlers
-// stay pure domain logic.
+// stay pure domain logic. ExpectedStreamVersion (optional) makes the
+// append conditional — optimistic concurrency (ADR-021).
 type EventDraft struct {
-	EventType     string
-	StreamID      string
-	SchemaVersion int
-	Payload       any
-	EvidenceRefs  []string
+	EventType             string
+	StreamID              string
+	SchemaVersion         int
+	Payload               any
+	EvidenceRefs          []string
+	ExpectedStreamVersion *uint64
 }
 
 // Handler validates a command and produces its events. Errors are domain
@@ -157,7 +159,24 @@ func (b *Bus) Submit(ctx context.Context, cmd Command) (ports.CommandReceipt, er
 		})
 	}
 
-	results, err := b.journal.Append(ctx, envelopes)
+	// Conditional append when any draft carries an expected version; a
+	// command may only condition on one stream (ADR-021).
+	var expected *ports.StreamVersion
+	for i := range drafts {
+		if v := drafts[i].ExpectedStreamVersion; v != nil {
+			if expected != nil && (expected.StreamID != drafts[i].StreamID || expected.Version != *v) {
+				return ports.CommandReceipt{}, fmt.Errorf("command %s: conflicting stream expectations in one command", cmd.Name)
+			}
+			expected = &ports.StreamVersion{TenantID: cmd.TenantID, StreamID: drafts[i].StreamID, Version: *v}
+		}
+	}
+
+	var results []ports.AppendResult
+	if expected != nil {
+		results, err = b.journal.AppendIf(ctx, *expected, envelopes)
+	} else {
+		results, err = b.journal.Append(ctx, envelopes)
+	}
 	if err != nil {
 		return ports.CommandReceipt{}, fmt.Errorf("command %s: journal append: %w", cmd.Name, err)
 	}

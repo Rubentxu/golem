@@ -63,6 +63,9 @@ type journalFunc func(ctx context.Context, events []ports.RawEvent) ([]ports.App
 func (f journalFunc) Append(ctx context.Context, e []ports.RawEvent) ([]ports.AppendResult, error) {
 	return f(ctx, e)
 }
+func (f journalFunc) AppendIf(ctx context.Context, _ ports.StreamVersion, e []ports.RawEvent) ([]ports.AppendResult, error) {
+	return f(ctx, e)
+}
 func (f journalFunc) ReadStream(ctx context.Context, _ ports.TenantID, _ string, _ uint64) ([]ports.RawEvent, error) {
 	return nil, nil
 }

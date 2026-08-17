@@ -15,6 +15,7 @@ import (
 	registrymem "github.com/Rubentxu/golem/adapters/registry/memstore"
 	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
 	"github.com/Rubentxu/golem/internal/api/httpapi"
+	appreq "github.com/Rubentxu/golem/internal/application/requirements"
 	"github.com/Rubentxu/golem/internal/application/runtime"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
 )
@@ -37,6 +38,9 @@ func main() {
 		log.Fatal(err)
 	}
 	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs))
+	rt.Bus.Register(appwork.CmdUpdateWorkItem, appwork.UpdateWorkItemHandler(rt.Journal))
+	rt.Bus.Register(appwork.CmdLinkWorkItems, appwork.LinkWorkItemsHandler(rt.Graph))
+	rt.Bus.Register(appreq.CmdCreateRequirement, appreq.CreateRequirementHandler(rt.IDs))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -55,7 +59,7 @@ func main() {
 	}
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           httpapi.New(rt.Bus, rt.Graph).Handler(),
+		Handler:           httpapi.New(rt.Bus, rt.Graph, rt.Journal).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

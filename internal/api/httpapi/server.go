@@ -32,12 +32,13 @@ import (
 
 // Stable problem codes (public contract; never rename).
 const (
-	CodeInvalidArgument = "golem/invalid-argument"
-	CodeMissingTenant   = "golem/missing-tenant"
-	CodeUnboundedQuery  = "golem/unbounded-query"
-	CodeNotFound        = "golem/not-found"
-	CodeDomainRejection = "golem/domain-rejection"
-	CodeInternal        = "golem/internal"
+	CodeInvalidArgument  = "golem/invalid-argument"
+	CodeMissingTenant    = "golem/missing-tenant"
+	CodeUnboundedQuery   = "golem/unbounded-query"
+	CodeNotFound         = "golem/not-found"
+	CodeRevisionConflict = "golem/revision-conflict"
+	CodeDomainRejection  = "golem/domain-rejection"
+	CodeInternal         = "golem/internal"
 )
 
 // Problem is the RFC 7807-style error body (API_GUIDELINES: stable code
@@ -97,21 +98,30 @@ type CommandSubmitter interface {
 	Submit(ctx context.Context, cmd command.Command) (ports.CommandReceipt, error)
 }
 
-// GraphReader is the read-side dependency: a tenant-scoped bounded
-// neighborhood query.
+// GraphReader is the read-side dependency: tenant-scoped point reads and
+// bounded neighborhood queries.
 type GraphReader interface {
 	Neighborhood(ctx context.Context, q ports.NeighborhoodQuery) (ports.Subgraph, error)
+	GetNode(ctx context.Context, tenant ports.TenantID, nodeID string) (ports.Node, error)
+}
+
+// StreamVersionReader reads the authoritative version of a stream from
+// the journal (ADR-021: optimistic concurrency is checked against the
+// source of truth, not the eventual projection).
+type StreamVersionReader interface {
+	ReadStream(ctx context.Context, tenant ports.TenantID, streamID string, fromVersion uint64) ([]ports.RawEvent, error)
 }
 
 // Server builds the HTTP handler from the submitted dependencies.
 type Server struct {
 	commands CommandSubmitter
 	graph    GraphReader
+	streams  StreamVersionReader
 }
 
 // New creates the edge server.
-func New(commands CommandSubmitter, graph GraphReader) *Server {
-	return &Server{commands: commands, graph: graph}
+func New(commands CommandSubmitter, graph GraphReader, streams StreamVersionReader) *Server {
+	return &Server{commands: commands, graph: graph, streams: streams}
 }
 
 // Handler returns the routed handler.
@@ -121,6 +131,11 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("POST /api/v1/work-items", s.handleCreateWorkItem)
+	mux.HandleFunc("GET /api/v1/work-items/{id}", s.handleGetWorkItem)
+	mux.HandleFunc("PATCH /api/v1/work-items/{id}", s.handleUpdateWorkItem)
+	mux.HandleFunc("POST /api/v1/work-items/{id}/links", s.handleLinkWorkItem)
+	mux.HandleFunc("POST /api/v1/requirements", s.handleCreateRequirement)
+	mux.HandleFunc("GET /api/v1/requirements/{id}", s.handleGetRequirement)
 	mux.HandleFunc("POST /api/v1/graph/neighborhood", s.handleNeighborhood)
 	return mux
 }
@@ -160,6 +175,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 		// Header already sent; nothing else to do but log-worthy.
 		_ = err
 	}
+}
+
+// decodeBody decodes a JSON request body with a 1 MiB guard.
+func decodeBody(w http.ResponseWriter, r *http.Request, v any) error {
+	return json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(v)
 }
 
 // ---- handlers ----
@@ -262,15 +282,4 @@ func (s *Server) handleNeighborhood(w http.ResponseWriter, r *http.Request) {
 		out.Edges = append(out.Edges, Edge{ID: e.ID, Type: e.Type, SourceID: e.SourceID, TargetID: e.TargetID, Revision: uint64(e.Revision), Attributes: e.Attributes})
 	}
 	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *Server) writeCommandError(w http.ResponseWriter, err error, corr string) {
-	switch {
-	case errors.Is(err, appwork.ErrEmptyTitle), errors.Is(err, appwork.ErrEmptyType):
-		s.problem(w, http.StatusUnprocessableEntity, CodeDomainRejection, err.Error(), corr)
-	case errors.Is(err, ports.ErrEmptyTenant), errors.Is(err, ports.ErrEmptyActor):
-		s.problem(w, http.StatusBadRequest, CodeInvalidArgument, err.Error(), corr)
-	default:
-		s.problem(w, http.StatusInternalServerError, CodeInternal, "command failed", corr)
-	}
 }

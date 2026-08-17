@@ -1,0 +1,199 @@
+package tck_test
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	checkpointmem "github.com/Rubentxu/golem/adapters/checkpoint/memstore"
+	graphmem "github.com/Rubentxu/golem/adapters/graph/memstore"
+	journalmem "github.com/Rubentxu/golem/adapters/journal/memstore"
+	registrymem "github.com/Rubentxu/golem/adapters/registry/memstore"
+	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
+	"github.com/Rubentxu/golem/internal/api/httpapi"
+	appreq "github.com/Rubentxu/golem/internal/application/requirements"
+	"github.com/Rubentxu/golem/internal/application/runtime"
+	appwork "github.com/Rubentxu/golem/internal/application/work"
+	"github.com/Rubentxu/golem/internal/ports"
+)
+
+// TestM2SliceRequirementsAndConcurrency covers the M2 additions over
+// real HTTP: requirements with Requirement→Work traceability via links,
+// GET with ETag, optimistic updates with If-Match and 409 on conflict.
+func TestM2SliceRequirementsAndConcurrency(t *testing.T) {
+	rt, err := runtime.New(runtime.Options{
+		Journal:    journalmem.NewJournal(),
+		Graph:      graphmem.NewGraph(),
+		Registry:   registrymem.NewRegistry(),
+		Transport:  transportmem.NewTransport(),
+		Checkpoint: checkpointmem.NewCheckpoints(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs))
+	rt.Bus.Register(appwork.CmdUpdateWorkItem, appwork.UpdateWorkItemHandler(rt.Journal))
+	rt.Bus.Register(appwork.CmdLinkWorkItems, appwork.LinkWorkItemsHandler(rt.Graph))
+	rt.Bus.Register(appreq.CmdCreateRequirement, appreq.CreateRequirementHandler(rt.IDs))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = rt.Run(ctx, 10, 5*time.Millisecond) }()
+
+	srv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).Handler())
+	defer srv.Close()
+
+	client := srv.Client()
+	post := func(path, idemKey, body string, hdr map[string]string) *http.Response {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+path, strings.NewReader(body))
+		req.Header.Set("X-Golem-Tenant", "t_m2")
+		if idemKey != "" {
+			req.Header.Set("Idempotency-Key", idemKey)
+		}
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	decodeTo := func(resp *http.Response, v any) {
+		t.Helper()
+		defer resp.Body.Close()
+		if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
+			t.Fatalf("decode %s: %v", resp.Status, err)
+		}
+	}
+	waitProjected := func(kind, id string) {
+		t.Helper()
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			sub, err := rt.Graph.Neighborhood(ctx, ports.NeighborhoodQuery{
+				TenantID: "t_m2", Roots: []string{id}, MaxDepth: 1, MaxNodes: 1, MaxEdges: 1,
+			})
+			if err == nil && len(sub.Nodes) == 1 && sub.Nodes[0].Kind == kind {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s %s never projected", kind, id)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+
+	// 1. Create one requirement and two work items.
+	resp := post("/api/v1/requirements", "req-key-0001", `{"title":"Traceability","statement":"Req→Work trace"}`, nil)
+	var reqReceipt httpapi.Receipt
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("requirement: %s", resp.Status)
+	}
+	decodeTo(resp, &reqReceipt)
+
+	var workReceipt httpapi.Receipt
+	resp = post("/api/v1/work-items", "work-key-0001", `{"title":"Implement trace","type":"task"}`, nil)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("work item: %s", resp.Status)
+	}
+	decodeTo(resp, &workReceipt)
+
+	// IDs recoverable from journal streams.
+	evs, _, _ := rt.Journal.Replay(ctx, 0, 0)
+	ids := map[string]string{}
+	for _, e := range evs {
+		switch {
+		case strings.HasPrefix(e.StreamID, "requirement:"):
+			ids["req"] = e.StreamID[len("requirement:"):]
+		case strings.HasPrefix(e.StreamID, "workitem:"):
+			if _, ok := ids["work"]; !ok {
+				ids["work"] = e.StreamID[len("workitem:"):]
+			}
+		}
+	}
+	waitProjected("Requirement", ids["req"])
+	waitProjected("WorkItem", ids["work"])
+
+	// 2. Link work item → requirement (IMPLEMENTS = Requirement→Work trace).
+	resp = post("/api/v1/work-items/"+ids["work"]+"/links", "link-key-0001",
+		`{"to_id":"`+ids["req"]+`","relation":"implements"}`, nil)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("link: %s", resp.Status)
+	}
+	resp.Body.Close()
+
+	// Invalid relations are rejected with the canonical ontology.
+	resp = post("/api/v1/work-items/"+ids["work"]+"/links", "link-key-0002",
+		`{"to_id":"`+ids["req"]+`","relation":"hates"}`, nil)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid relation: %s", resp.Status)
+	}
+	resp.Body.Close()
+
+	// 3. GET the work item: ETag exposes the stream version.
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/work-items/"+ids["work"], nil)
+	req.Header.Set("X-Golem-Tenant", "t_m2")
+	getResp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var item struct {
+		ETagAttrs struct {
+			Version uint64 `json:"stream_version"`
+		} `json:"-"`
+		Version uint64 `json:"stream_version"`
+	}
+	etag := getResp.Header.Get("ETag")
+	decodeTo(getResp, &item)
+	_ = item
+	// The stream holds created + linked events, so the version is 2.
+	if etag != `"2"` {
+		t.Fatalf("ETag = %q, want \"2\" (created + linked)", etag)
+	}
+
+	// 4. PATCH with correct If-Match: accepted.
+	req, _ = http.NewRequest(http.MethodPatch, srv.URL+"/api/v1/work-items/"+ids["work"], strings.NewReader(`{"status":"in_progress"}`))
+	req.Header.Set("X-Golem-Tenant", "t_m2")
+	req.Header.Set("Idempotency-Key", "upd-key-0001")
+	req.Header.Set("If-Match", etag)
+	patchResp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patchResp.StatusCode != http.StatusAccepted {
+		t.Fatalf("patch: %s", patchResp.Status)
+	}
+	patchResp.Body.Close()
+
+	// 5. PATCH with the stale If-Match: 409 revision conflict.
+	req, _ = http.NewRequest(http.MethodPatch, srv.URL+"/api/v1/work-items/"+ids["work"], strings.NewReader(`{"status":"done"}`))
+	req.Header.Set("X-Golem-Tenant", "t_m2")
+	req.Header.Set("Idempotency-Key", "upd-key-0002")
+	req.Header.Set("If-Match", etag)
+	conflictResp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var problem httpapi.Problem
+	decodeTo(conflictResp, &problem)
+	if conflictResp.StatusCode != http.StatusConflict || problem.Code != httpapi.CodeRevisionConflict {
+		t.Fatalf("conflict: %s %+v", conflictResp.Status, problem)
+	}
+
+	// 6. Unknown entity on GET: 404 problem.
+	req, _ = http.NewRequest(http.MethodGet, srv.URL+"/api/v1/work-items/ghost", nil)
+	req.Header.Set("X-Golem-Tenant", "t_m2")
+	notFound, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodeTo(notFound, &problem)
+	if notFound.StatusCode != http.StatusNotFound || problem.Code != httpapi.CodeNotFound {
+		t.Fatalf("not found: %s %+v", notFound.Status, problem)
+	}
+}
