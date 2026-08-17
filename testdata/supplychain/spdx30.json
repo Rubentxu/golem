@@ -1,0 +1,72 @@
+{
+  "spdxVersion": "SPDX-3.0.0",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "test-project-2.0",
+  "documentNamespace": "https://example.org/test-project-2.0.spdx",
+  "@graph": [
+    {
+      "spdxId": "SPDXRef-DOCUMENT",
+      "type": "SpdxDocument",
+      "creationInfo": {
+        "created": "2024-02-20T10:00:00Z",
+        "specVersion": "spdx.2.3",
+        "creators": ["Tool: golang-m4-supply-chain-test"]
+      }
+    },
+    {
+      "spdxId": "SPDXRef-Package-lib-a",
+      "type": "Package",
+      "name": "github.com/example/mylib",
+      "downloadLocation": "https://github.com/example/mylib/archive/refs/tags/v3.0.0.zip",
+      "builtDate": "2024-02-15T00:00:00Z",
+      "releaseDate": "2024-02-20T00:00:00Z",
+      "validUntilDate": "2025-02-20T00:00:00Z",
+      "externalIdentifiers": [
+        {
+          "type": "gitoid",
+          "identifier": "3a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b"
+        }
+      ],
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:github/example/mylib@v3.0.0"
+        }
+      ],
+      "contentInformation": {
+        "declaredLicense": "Apache-2.0",
+        "copyrightNotice": "Copyright 2024 Example Org",
+        "attributionTexts": ["Written by m4-supply-chain-test"]
+      }
+    },
+    {
+      "spdxId": "SPDXRef-Package-lib-b",
+      "type": "Package",
+      "name": "github.com/example/utils",
+      "downloadLocation": "https://github.com/example/utils/archive/refs/tags/v1.5.0.zip",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:github/example/utils@v1.5.0"
+        }
+      ]
+    },
+    {
+      "spdxId": "SPDXRef-relationship-doc-describes-pkg-a",
+      "type": "Relationship",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relatedSpdxElement": "SPDXRef-Package-lib-a"
+    },
+    {
+      "spdxId": "SPDXRef-relationship-doc-describes-pkg-b",
+      "type": "Relationship",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relatedSpdxElement": "SPDXRef-Package-lib-b"
+    }
+  ]
+}

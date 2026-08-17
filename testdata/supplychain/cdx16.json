@@ -1,0 +1,63 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2024-04-10T08:30:00Z",
+    "component": {
+      "type": "application",
+      "name": "example-service",
+      "version": "2.3.1",
+      "group": "com.example",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+        }
+      ],
+      "purl": "pkg:golang/github.com/example/service@v2.3.1"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "yaml",
+      "version": "3.0.1",
+      "group": "golang",
+      "purl": "pkg:golang/gopkg.in/yaml.v3@v3.0.1",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "legacy-component",
+      "version": "",
+      "purl": "",
+      "publisher": "Example Inc",
+      "description": "A component without purl — identity must be derived",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1234567812345678123456781234567812345678123456781234567812345678"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "semver-utils",
+      "version": "1.2.0",
+      "group": "golang",
+      "purl": "pkg:golang/github.com/example/semver-utils@v1.2.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "abcdefabcedfabcedfabcedfabcedfabcdefabcedfabcedfabcedfabcedfabcdef"
+        }
+      ]
+    }
+  ]
+}

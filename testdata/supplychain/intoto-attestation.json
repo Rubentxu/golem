@@ -1,0 +1,43 @@
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "subject": [
+    {
+      "name": "example-binary",
+      "digest": {
+        "sha256": "3a2b1c0d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a"
+      }
+    }
+  ],
+  "predicateType": "slsa-provenance/v1",
+  "predicate": {
+    "builder": {
+      "id": "https://github.com/slsa-framework/slsa-github-generator/github-actions/publish@v1.4.0"
+    },
+    "buildType": "https://github.com/slsa-framework/slsa-github-generator/generic@v1",
+    "invocation": {
+      "configSource": {
+        "entryPoint": "release/publish",
+        "parameters": {}
+      }
+    },
+    "metadata": {
+      "buildStartedOn": "2024-05-01T14:30:00Z",
+      "buildFinishedOn": "2024-05-01T14:31:00Z",
+      "reproducible": false
+    },
+    "materials": [
+      {
+        "uri": "git+https://github.com/example/project@v2.0.0",
+        "digest": {
+          "sha1": "abc123def456abc123def456abc123def456abc1"
+        }
+      },
+      {
+        "uri": "pkg:golang/github.com/example/dep@v1.0.0",
+        "digest": {
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    ]
+  }
+}

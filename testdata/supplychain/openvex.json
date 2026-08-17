@@ -1,0 +1,50 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@type": "vex",
+  "id": "https://openvex.dev/docs/public/vex-2024-0001",
+  "author": "Example Security Team",
+  "authoredOn": "2024-06-15T09:00:00Z",
+  "statementUUID": "444b4b4b-4444-4444-4444-444444444444",
+  "statements": [
+    {
+      "@type": "Statement",
+      "payload": {
+        "vulnerability": {
+          "@type": "Vulnerability",
+          "name": "CVE-2024-1234",
+          "rfc9169": "https://www.cve.org/CVERecord?id=CVE-2024-1234"
+        },
+        "products": [
+          {
+            "@type": "Product",
+            "name": "pkg:golang/github.com/example/myservice@v1.2.3",
+            "product_id": "PID-001"
+          }
+        ],
+        "status": "not_affected",
+        "justification": "component_not_present",
+        "impactStatement": "The vulnerable component is not included in the shipped artifact.",
+        "timestamp": "2024-06-15T09:00:00Z"
+      }
+    },
+    {
+      "@type": "Statement",
+      "payload": {
+        "vulnerability": {
+          "@type": "Vulnerability",
+          "name": "CVE-2024-5678"
+        },
+        "products": [
+          {
+            "@type": "Product",
+            "name": "pkg:golang/github.com/example/myservice@v1.2.3",
+            "product_id": "PID-001"
+          }
+        ],
+        "status": "fixed",
+        "fixedAt": "2024-05-20T00:00:00Z",
+        "timestamp": "2024-06-15T09:00:00Z"
+      }
+    }
+  ]
+}
