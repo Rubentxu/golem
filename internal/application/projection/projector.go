@@ -12,10 +12,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Rubentxu/golem/internal/ci"
 	"github.com/Rubentxu/golem/internal/planning"
 	"github.com/Rubentxu/golem/internal/ports"
 	"github.com/Rubentxu/golem/internal/projects"
 	"github.com/Rubentxu/golem/internal/requirements"
+	"github.com/Rubentxu/golem/internal/scm"
+	"github.com/Rubentxu/golem/internal/verification"
 	"github.com/Rubentxu/golem/internal/work"
 )
 
@@ -27,6 +30,10 @@ const (
 	KindProject     = "Project"
 	KindIteration   = "Iteration"
 	KindMilestone   = "Milestone"
+	KindCommit      = "Commit"
+	KindBuild       = "Build"
+	KindArtifact    = "Artifact"
+	KindTestRun     = "TestRun"
 )
 
 // Projector maps journal events to graph mutations. Unknown event types
@@ -139,6 +146,55 @@ func (Projector) Project(env ports.RawEvent) (ports.GraphMutation, error) {
 			"name": p.Name, "target_date": p.TargetDate.UTC().Format(time.RFC3339),
 		}))
 
+	case scm.EventCommitObserved:
+		var p scm.CommitObserved
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
+		}
+		if p.SHA == "" {
+			return m, fmt.Errorf("projection %s: empty sha", env.EventType)
+		}
+		m.Ops = append(m.Ops, nodeUpsert(p.SHA, KindCommit, map[string]any{
+			"repository": p.Repository, "message": p.Message,
+		}))
+		for i, reqID := range p.Implements {
+			m.Ops = append(m.Ops, edgeUpsert(edgeID(env.EventID, "impl", i), "IMPLEMENTS", p.SHA, reqID, causalAttrs(env)))
+		}
+
+	case ci.EventBuildCompleted:
+		var p ci.BuildCompleted
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
+		}
+		if p.BuildID == "" || p.Commit == "" {
+			return m, fmt.Errorf("projection %s: build_id and commit are mandatory", env.EventType)
+		}
+		m.Ops = append(m.Ops, nodeUpsert(p.BuildID, KindBuild, map[string]any{
+			"pipeline": p.Pipeline, "status": p.Status, "commit": p.Commit,
+		}))
+		// Commit ──BUILT_BY──> Build (VISION lineage direction).
+		m.Ops = append(m.Ops, edgeUpsert(edgeID(env.EventID, "builtby", 0), "BUILT_BY", p.Commit, p.BuildID, causalAttrs(env)))
+		for i, a := range p.Artifacts {
+			// ADR-022: artifact identity is the digest itself.
+			m.Ops = append(m.Ops, nodeUpsert(a.Digest, a.Kind, map[string]any{
+				"name": a.Name,
+			}))
+			m.Ops = append(m.Ops, edgeUpsert(edgeID(env.EventID, "prod", i), "PRODUCED", p.BuildID, a.Digest, causalAttrs(env)))
+		}
+
+	case verification.EventTestRunReported:
+		var p verification.TestRunReported
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
+		}
+		if p.RunID == "" || p.Verifies == "" {
+			return m, fmt.Errorf("projection %s: run_id and verifies are mandatory", env.EventType)
+		}
+		m.Ops = append(m.Ops, nodeUpsert(p.RunID, KindTestRun, map[string]any{
+			"case": p.TestCase, "status": p.Status,
+		}))
+		m.Ops = append(m.Ops, edgeUpsert(edgeID(env.EventID, "ver", 0), "VERIFIES", p.RunID, p.Verifies, causalAttrs(env)))
+
 	case work.EventTypeRegistered:
 		var p work.TypeRegistered
 		if err := json.Unmarshal(env.Payload, &p); err != nil {
@@ -212,6 +268,16 @@ func edgeUpsert(id, typ, src, tgt string, attrs map[string]any) ports.GraphOp {
 
 func canonicalRelation(rel string) string {
 	return strings.ToUpper(strings.TrimSpace(rel))
+}
+
+// edgeID derives a deterministic, causal edge identity from the causing
+// event: replaying the journal reproduces identical edge ids.
+func edgeID(eventID string, role string, i int) string {
+	return fmt.Sprintf("%s#%s%d", eventID, role, i)
+}
+
+func causalAttrs(env ports.RawEvent) map[string]any {
+	return map[string]any{"source_event": env.EventID}
 }
 
 // mutationCtx carries the tenant scope end-to-end (ADR-008) even for

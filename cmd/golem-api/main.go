@@ -17,10 +17,13 @@ import (
 	searchmem "github.com/Rubentxu/golem/adapters/search/memstore"
 	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
 	"github.com/Rubentxu/golem/internal/api/httpapi"
+	appci "github.com/Rubentxu/golem/internal/application/ci"
 	appplanning "github.com/Rubentxu/golem/internal/application/planning"
 	appprojects "github.com/Rubentxu/golem/internal/application/projects"
 	appreq "github.com/Rubentxu/golem/internal/application/requirements"
 	"github.com/Rubentxu/golem/internal/application/runtime"
+	appscm "github.com/Rubentxu/golem/internal/application/scm"
+	appver "github.com/Rubentxu/golem/internal/application/verification"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
 )
 
@@ -58,6 +61,9 @@ func main() {
 	rt.Bus.Register(appprojects.CmdCreateProject, appprojects.CreateProjectHandler(rt.IDs))
 	rt.Bus.Register(appplanning.CmdCreateIteration, appplanning.CreateIterationHandler(rt.IDs))
 	rt.Bus.Register(appplanning.CmdCreateMilestone, appplanning.CreateMilestoneHandler(rt.IDs))
+	rt.Bus.Register(appscm.CmdObserveCommit, appscm.ObserveCommitHandler())
+	rt.Bus.Register(appci.CmdCompleteBuild, appci.CompleteBuildHandler(rt.IDs, rt.Journal))
+	rt.Bus.Register(appver.CmdReportTestRun, appver.ReportTestRunHandler(rt.IDs, rt.Graph))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

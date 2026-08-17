@@ -6,11 +6,14 @@ import (
 	"strconv"
 	"strings"
 
+	appci "github.com/Rubentxu/golem/internal/application/ci"
 	"github.com/Rubentxu/golem/internal/application/command"
 	appreq "github.com/Rubentxu/golem/internal/application/requirements"
+	appscm "github.com/Rubentxu/golem/internal/application/scm"
+	appver "github.com/Rubentxu/golem/internal/application/verification"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
 	"github.com/Rubentxu/golem/internal/ports"
-	work "github.com/Rubentxu/golem/internal/work"
+	domainwork "github.com/Rubentxu/golem/internal/work"
 )
 
 // ---- GET /api/v1/work-items/{id} and /api/v1/requirements/{id} ----
@@ -303,11 +306,11 @@ func q2s(r *http.Request, key string) string {
 // ---- Work types (dynamic schemas + workflows) ----
 
 type registerWorkTypeBody struct {
-	Name        string            `json:"name"`
-	Initial     string            `json:"initial"`
-	States      []string          `json:"states"`
-	Transitions []work.Transition `json:"transitions"`
-	Fields      []work.FieldDef   `json:"fields"`
+	Name        string                  `json:"name"`
+	Initial     string                  `json:"initial"`
+	States      []string                `json:"states"`
+	Transitions []domainwork.Transition `json:"transitions"`
+	Fields      []domainwork.FieldDef   `json:"fields"`
 }
 
 func (s *Server) handleRegisterWorkType(w http.ResponseWriter, r *http.Request) {
@@ -384,9 +387,13 @@ func (s *Server) writeCommandError(w http.ResponseWriter, err error, corr string
 		errors.Is(err, appwork.ErrNothingToUpdate), errors.Is(err, appwork.ErrInvalidRelation),
 		errors.Is(err, appwork.ErrInvalidTypeDef), errors.Is(err, appwork.ErrUnknownTypeName),
 		errors.Is(err, appwork.ErrFieldValidation), errors.Is(err, appwork.ErrInvalidTransition),
-		errors.Is(err, appreq.ErrEmptyTitle):
+		errors.Is(err, appreq.ErrEmptyTitle),
+		errors.Is(err, appscm.ErrEmptySHA), errors.Is(err, appscm.ErrInvalidSHA), errors.Is(err, appscm.ErrEmptyRepo),
+		errors.Is(err, appci.ErrInvalidDigest), errors.Is(err, appci.ErrInvalidStatus), errors.Is(err, appci.ErrEmptyPipeline),
+		errors.Is(err, appver.ErrEmptyCase), errors.Is(err, appver.ErrInvalidRunStatus):
 		s.problem(w, http.StatusUnprocessableEntity, CodeDomainRejection, err.Error(), corr)
-	case errors.Is(err, appwork.ErrItemNotFound):
+	case errors.Is(err, appwork.ErrItemNotFound),
+		errors.Is(err, appci.ErrCommitNotObserved), errors.Is(err, appver.ErrUnknownTarget):
 		s.problem(w, http.StatusNotFound, CodeNotFound, err.Error(), corr)
 	case errors.Is(err, ports.ErrVersionConflict):
 		s.problem(w, http.StatusConflict, CodeRevisionConflict, "stream moved since read; re-read and retry (If-Match)", corr)

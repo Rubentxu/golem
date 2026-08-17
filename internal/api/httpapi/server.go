@@ -180,6 +180,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/planning/iterations/{id}/board", s.handleIterationBoard)
 	mux.HandleFunc("POST /api/v1/work-items/{id}/comments", s.handleAddComment)
 	mux.HandleFunc("GET /api/v1/work-items/{id}/events", s.handleItemEvents)
+	mux.HandleFunc("POST /api/v1/scm/commits", s.handleObserveCommit)
+	mux.HandleFunc("POST /api/v1/ci/builds", s.handleCompleteBuild)
+	mux.HandleFunc("POST /api/v1/test/runs", s.handleReportTestRun)
+	mux.HandleFunc("GET /api/v1/trace/{id}", s.handleTrace)
 	return mux
 }
 
@@ -270,6 +274,10 @@ func muxMatch(r *http.Request) (bool, string) {
 		{http.MethodGet, "/api/v1/planning/iterations/{id}/board"},
 		{http.MethodPost, "/api/v1/work-items/{id}/comments"},
 		{http.MethodGet, "/api/v1/work-items/{id}/events"},
+		{http.MethodPost, "/api/v1/scm/commits"},
+		{http.MethodPost, "/api/v1/ci/builds"},
+		{http.MethodPost, "/api/v1/test/runs"},
+		{http.MethodGet, "/api/v1/trace/{id}"},
 	}
 	for _, rt := range routes {
 		if r.Method == rt.method {
