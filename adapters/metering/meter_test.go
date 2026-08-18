@@ -16,11 +16,11 @@ func TestMeter_Record(t *testing.T) {
 	meter := NewMeter()
 
 	event := ports.MeteringEvent{
-		TenantID:  "tenant-1",
+		TenantID:   "tenant-1",
 		Capability: "events",
-		Units:     10,
-		CostUSD:   0.01,
-		Timestamp: time.Now(),
+		Units:      10,
+		CostUSD:    0.01,
+		Timestamp:  time.Now(),
 	}
 
 	err := meter.Record(ctx, event)
@@ -39,11 +39,11 @@ func TestMeter_Rollup(t *testing.T) {
 	now := time.Now().Truncate(time.Hour)
 
 	event := ports.MeteringEvent{
-		TenantID:  "tenant-1",
+		TenantID:   "tenant-1",
 		Capability: "events",
-		Units:     100,
-		CostUSD:   0.10,
-		Timestamp: now,
+		Units:      100,
+		CostUSD:    0.10,
+		Timestamp:  now,
 	}
 
 	_ = meter.Record(ctx, event)
