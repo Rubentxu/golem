@@ -59,6 +59,11 @@ type LLMResponse struct {
 
 // LLMUsage holds token counts and cost for an LLM response (ADR-061, AC-6).
 // Fields are provider-reported; sanity-bounded by the adapter.
+// NOTE: W4 spec type divergence — LLMUsage.CostUSD tracks observed cost per
+// LLM call, while the Meter subsystem (W4) aggregates CostUSD into hourly
+// rollups per tenant per capability. LLMUsage is the per-call observed cost;
+// MeteringRollup is the aggregated billable cost. The metering hook translates
+// LLMUsage.CostUSD into MeteringEvent.CostUSD for the rollup pipeline.
 type LLMUsage struct {
 	InputTokens  int     `json:"input_tokens"`  // prompt tokens
 	OutputTokens int     `json:"output_tokens"` // completion tokens

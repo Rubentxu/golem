@@ -3,6 +3,11 @@ package ports
 import "fmt"
 
 // BudgetLimits constrains resource usage per execution (ADR-069, M8 I-1).
+// NOTE: W4 spec type divergence — BudgetLimits uses TokenCostUSD float64 for
+// dollar cost tracking, while the Quota subsystem (W4) uses token_count int64
+// for per-tenant quota counters. These are separate concepts: BudgetLimits
+// constrains execution cost, while QuotaCounters track per-tenant consumption.
+// The QuotaEnforcer port translates between them via the budget aggregator.
 // It defines limits that are checked before allowing operations.
 // The JSON shape matches the held-out fixture format.
 type BudgetLimits struct {
