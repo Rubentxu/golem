@@ -30,6 +30,12 @@ func NewEngine(reg *Registry, graph ports.GraphStore, clock ports.Clock) *Engine
 	return &Engine{registry: reg, graph: graph, clock: clock}
 }
 
+// Clock exposes the injected clock (shadow runs re-wire engines with the
+// same clock to keep executions comparable).
+func (e *Engine) Clock() ports.Clock {
+	return e.clock
+}
+
 // Outcome is the observable result of executing one behavior for one event.
 type Outcome struct {
 	BehaviorID string

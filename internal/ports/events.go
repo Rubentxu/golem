@@ -27,6 +27,12 @@ const (
 	// on stream "extension.pack.{tenant}.{name}" — exactly once per
 	// (tenant, name) by optimistic concurrency (expected version 0).
 	EventExtensionPackActivated = "extension.pack.activated.v1"
+
+	// EventScenarioPromoted is emitted when a scenario fork is promoted
+	// (M6). Payload: {scenario_id, base_position, events_applied,
+	// promoted_by}. Emitted on stream "scenario.{id}" after the overlay
+	// batch has been appended atomically.
+	EventScenarioPromoted = "scenario.promoted.v1"
 )
 
 // Actor identifies who or what performed an action. Actor and tenant are
