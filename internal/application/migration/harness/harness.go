@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Rubentxu/golem/internal/application/projection"
 	"github.com/Rubentxu/golem/internal/canonical"
 	"github.com/Rubentxu/golem/internal/clock"
 	"github.com/Rubentxu/golem/internal/ids"
@@ -35,11 +36,11 @@ type HarnessOptions struct {
 	SampleSeed uint64
 	// TenantID is the tenant to migrate.
 	TenantID ports.TenantID
-	// TargetMutator is an optional hook called after loading but before diffing.
-	// It enables tests to inject divergence (e.g., attribute mutations) into the
-	// target graph so that the diff step detects and rolls back.
-	// The target graph at this point is an exact copy of the source snapshot.
-	TargetMutator func(context.Context, ports.GraphStore, ports.TenantID) error
+	// TargetValidator is an optional TCK-style validation run against the target
+	// graph before cutover. If it returns an error, the harness rolls back
+	// with RollbackTargetTCKFailed. The harness package cannot import tck/
+	// (cycle isolation); callers wire tck.RunGraphStoreTCK through this field.
+	TargetValidator func(ctx context.Context, target ports.GraphStore) error
 }
 
 // DefaultHarnessOptions returns the standard options for a harness run.
@@ -226,17 +227,70 @@ func (h *Harness) stepLoading(ctx context.Context) (Step, error) {
 }
 
 // stepReplaying: replay journal events from source into target.
+//
+// This implements the "dual projection" phase of the migration rehearsal:
+// after the snapshot, any new events written to the source journal are
+// replayed into the target so target stays in sync with source's live state.
+// If a source mutation is applied directly (not journaled), replay cannot
+// replicate it — the subsequent diffing step will detect the divergence and
+// roll back. This is the honest migration divergence scenario.
+//
+// Contract: after this step, target reflects all journaled events that
+// occurred on source after the snapshot position.
 func (h *Harness) stepReplaying(ctx context.Context) (Step, error) {
-	// Replay journal from journal_position.head+1 and apply to target.
-	// For in-memory tests, we assume target is already seeded.
-	// Apply target mutator (if set) to inject divergence before diffing.
-	if h.Options.TargetMutator != nil {
-		if err := h.Options.TargetMutator(ctx, h.Target.Graph, h.Options.TenantID); err != nil {
+	cursorPos, err := h.Checkpoint.Load(ctx, cursorKey(h.ID))
+	if err != nil {
+		return StepRolledBack, fmt.Errorf("load cursor: %w", err)
+	}
+
+	projector := projection.Projector{}
+	for {
+		batch, newPos, err := h.Journal.Replay(ctx, cursorPos, 100)
+		if err != nil {
 			audit := newAudit(h.Journal, h.ids, h.clk, h.ID, "memstore", "memstore")
 			audit.rolledBack(ctx, RollbackSemanticDiff, "replaying")
-			return StepRolledBack, fmt.Errorf("target mutator: %w", err)
+			return StepRolledBack, fmt.Errorf("replay: %w", err)
+		}
+		if len(batch) == 0 {
+			break // caught up — no new events since snapshot
+		}
+
+		for i, env := range batch {
+			applied, err := projection.ApplyIfHandled(projector, h.Target.Graph, env)
+			if err != nil {
+				audit := newAudit(h.Journal, h.ids, h.clk, h.ID, "memstore", "memstore")
+				audit.rolledBack(ctx, RollbackSemanticDiff, "replaying")
+				return StepRolledBack, fmt.Errorf("apply event %s: %w", env.EventID, err)
+			}
+			if applied {
+				cursorPos = newPos
+			}
+			_ = i // position tracked via newPos
 		}
 	}
+
+	// Persist cursor so resume is always from the last replayed position.
+	if err := h.Checkpoint.Save(ctx, cursorKey(h.ID), cursorPos); err != nil {
+		return StepRolledBack, fmt.Errorf("save cursor: %w", err)
+	}
+
+	log.Printf("migration harness %s: replayed journal events up to position %d", h.ID, cursorPos)
+
+	// C-3: run TargetValidator (TCK) against target before cutover.
+	// This is injected by the caller (e.g. cmd/tck wires tck.RunGraphStoreTCK).
+	// On failure the harness rolls back with RollbackTargetTCKFailed.
+	// The error is logged but NOT returned — the harness completes gracefully
+	// with StepRolledBack as terminal state (matching the other rollback paths).
+	if h.Options.TargetValidator != nil {
+		if err := h.Options.TargetValidator(ctx, h.Target.Graph); err != nil {
+			audit := newAudit(h.Journal, h.ids, h.clk, h.ID, "memstore", "memstore")
+			audit.rolledBack(ctx, RollbackTargetTCKFailed, "replaying")
+			log.Printf("migration harness %s: target TCK failed: %v — rolling back", h.ID, err)
+			return StepRolledBack, nil
+		}
+		log.Printf("migration harness %s: target TCK passed", h.ID)
+	}
+
 	return StepShadowing, nil
 }
 
