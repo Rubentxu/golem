@@ -736,3 +736,100 @@ func TestAgentHarness_NoBehaviorRollsBack(t *testing.T) {
 		t.Errorf("RollbackReason: got %q, want %q", result.RollbackReason, agentpkg.RollbackNoAgenticHandler)
 	}
 }
+
+// TestAgentHarness_HeldOutPassRate_Enforced verifies that held-out fixtures
+// achieve ≥80% pass rate when executed with a real AgenticH (I-6b RED phase).
+// This test initially fails until W1.3 injects the budget cap enforcement.
+// The 3 held-out fixtures are:
+//   - security/sbom-with-unknown-cve.json
+//   - release/release-with-signature-invalid.json
+//   - uat/req-with-pii-input.json
+func TestAgentHarness_HeldOutPassRate_Enforced(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// Load held-out fixtures.
+	heldOutPaths := []string{
+		"../internal/agent/harness/fixtures/cases/v1-held-out/security/sbom-with-unknown-cve.json",
+		"../internal/agent/harness/fixtures/cases/v1-held-out/release/release-with-signature-invalid.json",
+		"../internal/agent/harness/fixtures/cases/v1-held-out/uat/req-with-pii-input.json",
+	}
+
+	var fixtures []agentpkg.Fixture
+	for _, p := range heldOutPaths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("failed to read held-out fixture %s: %v", p, err)
+		}
+		var fix agentpkg.Fixture
+		if err := json.Unmarshal(data, &fix); err != nil {
+			t.Fatalf("failed to parse held-out fixture %s: %v", p, err)
+		}
+		fixtures = append(fixtures, fix)
+	}
+
+	if len(fixtures) != 3 {
+		t.Fatalf("expected 3 held-out fixtures, got %d", len(fixtures))
+	}
+
+	// Create a real AgenticH that simulates agentic behavior.
+	realAgenticH := func(ctx context.Context, event ports.RawEvent, agent *behavior.AgenticContext) (behavior.HandlerOutput, error) {
+		// Simulate an agent that produces proposals with budget constraints.
+		// When budget is exhausted, it returns no proposals.
+		budget := agent.Budget
+		actual := ports.Actual{
+			TokenCostUSD: 100, // simulate some usage
+		}
+		if budget.Exceeded(actual) {
+			return behavior.HandlerOutput{}, nil
+		}
+		return behavior.HandlerOutput{
+			Proposals: []behavior.ProposalNote{
+				{Title: "proposal-held-out-001", Body: "test rationale from real agentic handler"},
+			},
+		}, nil
+	}
+
+	passCount := 0
+	for i, fixture := range fixtures {
+		// Set up harness with real AgenticH.
+		journal := journalmem.NewJournal()
+		cp := memstore.NewCheckpoints()
+		clk := clock.Fixed(time.Now().Add(time.Duration(i) * time.Hour))
+		idg := idgen.NewGenerator(clk)
+		opts := agentpkg.DefaultHarnessOptions()
+		opts.Clock = clk
+		opts.IDGenerator = idg
+		opts.CheckpointStore = cp
+		opts.JournalStore = journal
+		opts.Behavior = &behavior.Behavior{
+			Kind_: behavior.KindAgentic,
+			AgenticH: func(ctx context.Context, event ports.RawEvent, agent *behavior.AgenticContext) (behavior.HandlerOutput, error) {
+				return realAgenticH(ctx, event, agent)
+			},
+		}
+
+		h := agentpkg.NewHarness(t.Name(), opts)
+		result, err := h.Run(ctx, fixture)
+		if err != nil {
+			t.Logf("fixture %s: Run error = %v", fixture.ID, err)
+			continue
+		}
+
+		scored := agentpkg.Score(fixture, result)
+		if scored.Pass {
+			passCount++
+			t.Logf("fixture %s: PASS", fixture.ID)
+		} else {
+			t.Logf("fixture %s: FAIL (reason: %s)", fixture.ID, scored.FailReason)
+		}
+	}
+
+	// Require ≥80% pass rate (2 out of 3).
+	minPassRate := 0.8
+	actualPassRate := float64(passCount) / float64(len(fixtures))
+	if actualPassRate < minPassRate {
+		t.Errorf("held-out pass rate %.0f%% (%d/%d) < required %.0f%%",
+			actualPassRate*100, passCount, len(fixtures), minPassRate*100)
+	}
+}
