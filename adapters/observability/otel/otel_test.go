@@ -33,9 +33,9 @@ func TestOTelSpanPerCall(t *testing.T) {
 	corr := ports.Correlation{
 		CorrelationID: "corr-123",
 		TenantID:      "t-piloto",
-		ActorType:    "agent",
-		ActorID:      "agent-001",
-		CommandID:    "cmd-456",
+		ActorType:     "agent",
+		ActorID:       "agent-001",
+		CommandID:     "cmd-456",
 	}
 	ctx = ports.WithCorrelation(ctx, corr)
 

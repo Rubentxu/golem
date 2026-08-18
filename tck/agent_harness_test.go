@@ -130,6 +130,7 @@ func TestAgentHarnessScoringPass(t *testing.T) {
 		Pass:             true,
 		EvalID:           "e-001",
 		ProposalID:       "p-001",
+		OpCount:          1, // OpCount > 0 indicates operations present (I-6a)
 		CostUSD:          0.01,
 		LatencyMs:        500,
 		PolicyViolations: 0,
