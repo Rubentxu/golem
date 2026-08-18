@@ -9,14 +9,14 @@ import (
 
 // Router implements ports.CellRouter using jump hash for deterministic routing.
 type Router struct {
-	cells   []ports.CellID
+	cells     []ports.CellID
 	overrides map[string]ports.CellID // tenantID → cellID overrides
 }
 
 // NewRouter creates a Router with the given cells.
 func NewRouter(cells []ports.CellID) *Router {
 	return &Router{
-		cells:    cells,
+		cells:     cells,
 		overrides: make(map[string]ports.CellID),
 	}
 }
