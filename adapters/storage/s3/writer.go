@@ -122,3 +122,13 @@ func (w *Writer) WriteWithEncryption(ctx context.Context, key string, data io.Re
 func (w *Writer) UploadPartSize() int64 {
 	return minPartSize
 }
+
+// Bucket returns the S3 bucket name.
+func (w *Writer) Bucket() string {
+	return w.bucket
+}
+
+// Prefix returns the S3 key prefix.
+func (w *Writer) Prefix() string {
+	return w.prefix
+}

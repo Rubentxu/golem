@@ -82,3 +82,8 @@ func (s *Signer) resolveKeyID(ctx context.Context) (string, error) {
 
 // ErrInvalidSignature is returned when the signature verification fails.
 var ErrInvalidSignature = fmt.Errorf("kms: invalid signature")
+
+// KeyAlias returns the KMS key alias used by this signer.
+func (s *Signer) KeyAlias() string {
+	return s.keyAlias
+}
