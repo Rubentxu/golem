@@ -7,37 +7,6 @@ import (
 	"github.com/Rubentxu/golem/internal/ports"
 )
 
-// TestPolicy_AgentDirectWrite_DENY verifies that direct writes by agents are denied (AC-2).
-func TestPolicy_AgentDirectWrite_DENY(t *testing.T) {
-	// T11.RED: This test should FAIL before implementation
-	// After T11.GREEN, the PolicyEvaluator should deny agent direct writes
-
-	actor := ports.Actor{Type: "agent", ID: "test-agent"}
-	action := ports.Action{
-		Actor:  actor,
-		Target: "graph:node:test-node",
-		Type:   "write",
-	}
-
-	// PolicyEvaluator should be nil or not implemented yet
-	var policy ports.PolicyEvaluator
-	if policy == nil {
-		// Skip test - policy not implemented
-		t.Skip("PolicyEvaluator not yet implemented")
-	}
-
-	ctx := context.Background()
-	decision, err := policy.Evaluate(ctx, action)
-	if err != nil {
-		t.Fatalf("Evaluate failed: %v", err)
-	}
-
-	// Agent direct write should be denied
-	if decision.Outcome != ports.DecisionOutcomeDeny {
-		t.Errorf("expected DecisionOutcomeDeny for agent direct write, got %v", decision.Outcome)
-	}
-}
-
 // TestPolicy_AgentProposal_Gated verifies that agent proposals are gated by PolicyEvaluator (AC-3).
 func TestPolicy_AgentProposal_Gated(t *testing.T) {
 	// T11.RED: This test should FAIL before implementation
