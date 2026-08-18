@@ -20,9 +20,16 @@ type Reader struct {
 	Graph    ports.GraphStore
 }
 
+// ReaderOpts controls ReadFromReader behaviour.
+type ReaderOpts struct {
+	// ClearTenantFirst, when true, removes all existing nodes/edges for
+	// TenantID before applying the export (full-reload semantics).
+	ClearTenantFirst bool
+}
+
 // ReadFromReader reads the canonical export from an io.Reader (already a tar).
 // Caller provides the tar.Reader positioned at the start.
-func (r *Reader) ReadFromReader(ctx context.Context, tr *tar.Reader) error {
+func (r *Reader) ReadFromReader(ctx context.Context, tr *tar.Reader, opts ReaderOpts) error {
 	// Read manifest first.
 	manifest, err := r.readManifest(tr)
 	if err != nil {
@@ -32,8 +39,12 @@ func (r *Reader) ReadFromReader(ctx context.Context, tr *tar.Reader) error {
 		return err
 	}
 
-	// Reset tar to start (tr doesn't support seeking, but we already read manifest).
-	// Actually we can't reset. We need to track files as we read them.
+	// Optional clear of existing tenant data (full-reload semantics).
+	if opts.ClearTenantFirst && r.Graph != nil {
+		if err := r.clearTenant(ctx); err != nil {
+			return fmt.Errorf("clear tenant: %w", err)
+		}
+	}
 
 	// Read and apply nodes.
 	nodes, err := r.extractJSONL(tr, "nodes.jsonl", manifest.Counts.Nodes)
@@ -56,6 +67,24 @@ func (r *Reader) ReadFromReader(ctx context.Context, tr *tar.Reader) error {
 		return fmt.Errorf("apply edges: %w", err)
 	}
 
+	return nil
+}
+
+// clearTenant removes all nodes for TenantID from the graph (full-reload prep).
+func (r *Reader) clearTenant(ctx context.Context) error {
+	nodes, err := r.Graph.ListNodes(ctx, r.TenantID)
+	if err != nil {
+		return err
+	}
+	for _, n := range nodes {
+		_, err := r.Graph.Apply(ctx, ports.GraphMutation{
+			TenantID: r.TenantID,
+			Ops:      []ports.GraphOp{{Kind: ports.OpRemoveNode, Target: n.ID}},
+		})
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

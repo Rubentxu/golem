@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"time"
@@ -204,22 +203,13 @@ func (h *Harness) stepSnapshotting(ctx context.Context) (Step, error) {
 }
 
 // stepLoading: bulk load the export into target via full reload.
-// We clear existing target data first, then load the source snapshot.
-// This ensures source and target are byte-identical after loading.
 func (h *Harness) stepLoading(ctx context.Context) (Step, error) {
-	if h.snapshotTar == nil {
-		return StepRolledBack, fmt.Errorf("no snapshot tar — stepSnapshotting must run first")
-	}
-
-	// Full reload: clear existing target data, then load source snapshot.
-	// After loading, target = source exactly, enabling clean diff.
-	tr := tar.NewReader(bytes.NewReader(h.snapshotTar))
-	loaded, err := h.copyIntoTarget(ctx, tr)
+	nodes, edges, err := h.loadSnapshot(ctx)
 	if err != nil {
-		return StepRolledBack, fmt.Errorf("copy into target: %w", err)
+		return StepRolledBack, fmt.Errorf("load snapshot: %w", err)
 	}
 	log.Printf("migration harness %s: loaded %d nodes %d edges into target",
-		h.ID, loaded.Nodes, loaded.Edges)
+		h.ID, nodes, edges)
 	if err := h.Checkpoint.Save(ctx, cursorKey(h.ID), ports.StreamPosition(1)); err != nil {
 		return StepRolledBack, fmt.Errorf("save cursor: %w", err)
 	}
@@ -397,111 +387,28 @@ func (h *Harness) exportSource(ctx context.Context) (*canonical.Manifest, error)
 }
 
 // loadSnapshot loads the canonical export tar into the target graph.
-func (h *Harness) loadSnapshot(ctx context.Context) error {
+func (h *Harness) loadSnapshot(ctx context.Context) (nodes, edges int, _ error) {
 	if h.snapshotTar == nil {
-		return fmt.Errorf("no snapshot tar available — stepSnapshotting must run first")
+		return 0, 0, fmt.Errorf("no snapshot tar available — stepSnapshotting must run first")
 	}
 	tr := tar.NewReader(bytes.NewReader(h.snapshotTar))
 	reader := canonical.Reader{
 		TenantID: h.Options.TenantID,
 		Graph:    h.Target.Graph,
 	}
-	return reader.ReadFromReader(ctx, tr)
-}
-
-// copyCounts tracks how many items were loaded.
-type copyCounts struct {
-	Nodes int
-	Edges int
-}
-
-// copyIntoTarget reads nodes.jsonl and edges.jsonl from the tar and applies
-// them to the target graph (full reload: removes existing data first).
-// This ensures source and target are byte-identical after loading.
-func (h *Harness) copyIntoTarget(ctx context.Context, tr *tar.Reader) (*copyCounts, error) {
-	// First, clear existing target data for this tenant (full reload).
-	existingNodes, err := h.Target.Graph.ListNodes(ctx, h.Options.TenantID)
+	if err := reader.ReadFromReader(ctx, tr, canonical.ReaderOpts{ClearTenantFirst: true}); err != nil {
+		return 0, 0, err
+	}
+	// Count loaded items for logging.
+	nodesList, err := h.Target.Graph.ListNodes(ctx, h.Options.TenantID)
 	if err != nil {
-		return nil, fmt.Errorf("list existing nodes: %w", err)
+		return 0, 0, err
 	}
-	for _, n := range existingNodes {
-		_, err := h.Target.Graph.Apply(ctx, ports.GraphMutation{
-			TenantID: h.Options.TenantID,
-			Ops:      []ports.GraphOp{{Kind: ports.OpRemoveNode, Target: n.ID}},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("remove node %s: %w", n.ID, err)
-		}
-	}
-
-	c := &copyCounts{}
-	for {
-		hdr, err := tr.Next()
-		if err != nil {
-			break
-		}
-		switch hdr.Name {
-		case "nodes.jsonl":
-			nodes, err := readCanonicalNodes(tr)
-			if err != nil {
-				return nil, fmt.Errorf("read nodes: %w", err)
-			}
-			for _, n := range nodes {
-				_, err := h.Target.Graph.Apply(ctx, ports.GraphMutation{
-					TenantID: h.Options.TenantID,
-					Ops: []ports.GraphOp{{Kind: ports.OpUpsertNode, Target: n.ID, Data: map[string]any{
-						"kind":       n.Kind,
-						"revision":   n.Revision,
-						"attributes": n.Attributes,
-					}}},
-				})
-				if err != nil {
-					return nil, fmt.Errorf("apply node %s: %w", n.ID, err)
-				}
-				c.Nodes++
-			}
-		case "edges.jsonl":
-			edges, err := readCanonicalEdges(tr)
-			if err != nil {
-				return nil, fmt.Errorf("read edges: %w", err)
-			}
-			for _, e := range edges {
-				_, err := h.Target.Graph.Apply(ctx, ports.GraphMutation{
-					TenantID: h.Options.TenantID,
-					Ops: []ports.GraphOp{{Kind: ports.OpUpsertEdge, Target: e.ID, Data: map[string]any{
-						"type":       e.Type,
-						"source":     e.SourceID,
-						"target":     e.TargetID,
-						"revision":   e.Revision,
-						"attributes": e.Attributes,
-					}}},
-				})
-				if err != nil {
-					return nil, fmt.Errorf("apply edge %s: %w", e.ID, err)
-				}
-				c.Edges++
-			}
-		}
-	}
-	return c, nil
-}
-
-// readCanonicalNodes reads canonical nodes from a tar entry positioned at nodes.jsonl.
-func readCanonicalNodes(tr *tar.Reader) ([]canonical.CanonicalNode, error) {
-	data, err := io.ReadAll(tr)
+	edgesList, err := h.Target.Graph.ListEdges(ctx, h.Options.TenantID)
 	if err != nil {
-		return nil, err
+		return 0, 0, err
 	}
-	return canonical.ParseCanonicalNodes(data)
-}
-
-// readCanonicalEdges reads canonical edges from a tar entry positioned at edges.jsonl.
-func readCanonicalEdges(tr *tar.Reader) ([]canonical.CanonicalEdge, error) {
-	data, err := io.ReadAll(tr)
-	if err != nil {
-		return nil, err
-	}
-	return canonical.ParseCanonicalEdges(data)
+	return len(nodesList), len(edgesList), nil
 }
 
 // Rollback restores the source graph. In the R4 harness, this is called
