@@ -1,0 +1,23 @@
+{
+  "budgets": {
+    "max_ms": 5000,
+    "max_memory_mb": 128
+  },
+  "capabilities": [
+    "graph.read",
+    "proposal.write"
+  ],
+  "entrypoints": {},
+  "format_version": "1",
+  "golem_api": ">=0.5 <0.6",
+  "integrity_digest": "14bc6ec66fcdcb839e4fc4ec132eb48a9a0466e9fb1494777c449fddd6f836aa",
+  "name": "golem-demo",
+  "ontology": [
+    "ontology/demo.json"
+  ],
+  "permissions": [
+    "scm.read",
+    "ci.trigger"
+  ],
+  "version": "0.1.0"
+}

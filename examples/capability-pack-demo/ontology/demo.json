@@ -1,0 +1,6 @@
+{
+  "node_types": [
+    { "kind": "DemoCapability", "description": "Marker node contributed by the golem-demo pack (M5.1 declarative activation demo)" }
+  ],
+  "edge_types": []
+}
