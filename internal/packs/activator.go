@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/Rubentxu/golem/internal/ports"
 )
@@ -124,7 +123,7 @@ func (a *Activator) Activate(ctx context.Context, tenant ports.TenantID, m *Mani
 // Status returns the activated pack for (tenant, name), or (nil, nil) when
 // the pack was never activated. The recovery path for callers that receive
 // ErrPackAlreadyActivated.
-func (a *Activator) Status(ctx context.Context, tenant ports.TenantID, name string) (*PackStatus, error) {
+func (a *Activator) Status(ctx context.Context, tenant ports.TenantID, name string) (*ports.PackStatus, error) {
 	events, err := a.journal.ReadStream(ctx, tenant, PackStreamID(tenant, name), 0)
 	if err != nil {
 		return nil, fmt.Errorf("packs: status read: %w", err)
@@ -137,24 +136,14 @@ func (a *Activator) Status(ctx context.Context, tenant ports.TenantID, name stri
 		if err := json.Unmarshal(events[i].Payload, &p); err != nil {
 			return nil, fmt.Errorf("packs: status payload decode: %w", err)
 		}
-		return &PackStatus{
+		return &ports.PackStatus{
 			Name:             p.Name,
 			Version:          p.Version,
 			IntegrityDigest:  p.IntegrityDigest,
 			ActivatedEventID: events[i].EventID,
-			ActivatedAt:      events[i].OccurredAt,
 		}, nil
 	}
 	return nil, nil
-}
-
-// PackStatus is the query-side view of one activation.
-type PackStatus struct {
-	Name             string    `json:"name"`
-	Version          string    `json:"version"`
-	IntegrityDigest  string    `json:"integrity_digest"`
-	ActivatedEventID string    `json:"activated_event_id"`
-	ActivatedAt      time.Time `json:"activated_at"`
 }
 
 // PackStreamID derives the journal stream for (tenant, name). Every

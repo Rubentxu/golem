@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 )
 
@@ -34,50 +35,51 @@ var (
 	ErrUnsupportedInM51 = errors.New("pack: migrations and ui contributions are not supported in GOLEM 0.5.1; reserved for M6")
 )
 
-// Pack describes a capability pack loaded from a registry adapter.
-type Pack struct {
-	TenantID        TenantID `json:"tenant_id,omitempty"`
-	Name            string   `json:"name"`
-	Version         string   `json:"version"`
-	IntegrityDigest string   `json:"integrity_digest"` // sha256 hex (64 chars) of the pack's canonical manifest
-	FormatVersion   string   `json:"format_version"`   // always "1"
-	Capabilities    []string `json:"capabilities,omitempty"`
-	Permissions     []string `json:"permissions,omitempty"`
+// LoadedPack is a pack resolved from a registry source. RawManifest carries
+// the verbatim manifest.json bytes: the digest contract is computed over the
+// canonical re-serialisation of those bytes, so adapters must hand them
+// through untouched instead of re-marshalling.
+type LoadedPack struct {
+	Name            string
+	Version         string
+	IntegrityDigest string
+	RawManifest     json.RawMessage
 }
 
-// PackRegistry is the activation registry for capability packs. Adapters decide
-// WHERE packs come from (filesystem, OCI, etc.); the registry owns the
-// activation lifecycle (Load → Verify → Activate → Status → Deactivate).
-//
-// All methods are pure domain operations; state is stored in the journal.
-type PackRegistry interface {
-	// Load reads a pack from the given source path (adapter-specific resolution:
-	// filesystem = relative to adapter root, OCI = reference string, etc.).
-	// Load populates IntegrityDigest and FormatVersion from the manifest.
-	// Returns ErrPackNotFound if the source cannot be resolved.
-	Load(ctx context.Context, sourcePath string) (*Pack, error)
+// PackStatus is the query-side view of one activation.
+type PackStatus struct {
+	Name             string
+	Version          string
+	IntegrityDigest  string
+	ActivatedEventID string
+}
 
-	// Verify computes the digest independently from the source and compares it
-	// to the manifest's integrity_digest field. Exposed separately for callers
-	// that want to check without loading the full pack.
-	// Returns ErrPackIntegrityFailed on mismatch; ErrPackManifestInvalid if
-	// the manifest itself is unreadable.
+// PackRegistry is the activation registry for capability packs. Adapters
+// decide WHERE packs come from (filesystem, OCI, ...); the lifecycle
+// (validate → verify → activate exactly once per tenant) is the port
+// contract. State lives in the journal — there is no side table.
+type PackRegistry interface {
+	// Load reads and validates a pack from the given source path
+	// (adapter-specific resolution: filesystem = relative to the adapter
+	// root). Returns ErrPackNotFound when the source cannot be resolved and
+	// ErrPackManifestInvalid when the manifest fails validation.
+	Load(ctx context.Context, sourcePath string) (*LoadedPack, error)
+
+	// Verify computes the digest from the source and compares it to the
+	// manifest's declared integrity_digest. Returns ErrPackIntegrityFailed
+	// on mismatch.
 	Verify(ctx context.Context, sourcePath string) error
 
-	// Activate idempotently activates the pack for the tenant.
-	// Idempotency: calling Activate again with the same (tenant, name, digest)
-	// returns ErrPackAlreadyActivated without duplicating the journal event.
-	// Uses journal.AppendIf(expected=StreamVersion{Version:0}) so that the
-	// first call with expected=0 succeeds; a second call finds Version≥1
-	// and gets ErrVersionConflict → wrapped as ErrPackAlreadyActivated.
-	Activate(ctx context.Context, tenant TenantID, p *Pack) (StreamPosition, error)
+	// Activate activates the pack for the tenant, journalling exactly one
+	// extension.pack.activated.v1 event. Re-activation returns
+	// ErrPackAlreadyActivated without duplicating the event.
+	Activate(ctx context.Context, tenant TenantID, p *LoadedPack) (StreamPosition, error)
 
-	// Status returns the activation state for (tenant, name). If the pack
-	// is not activated, returns (nil, nil). This is the recovery path for
-	// callers that receive ErrPackAlreadyActivated.
-	Status(ctx context.Context, tenant TenantID, name string) (*Pack, error)
+	// Status returns the activation state for (tenant, name), or (nil, nil)
+	// when the pack was never activated for that tenant.
+	Status(ctx context.Context, tenant TenantID, name string) (*PackStatus, error)
 
-	// Deactivate is a no-op in M5.1 (reserved for M6). It exists to keep
-	// the Port stable across releases.
+	// Deactivate is a no-op in M5.1 (reserved for M6). Its signature exists
+	// to keep the port stable across releases.
 	Deactivate(ctx context.Context, tenant TenantID, name string) error
 }
