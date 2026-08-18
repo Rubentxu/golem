@@ -15,11 +15,18 @@ const (
 	EventMigrationHarnessRolledBack = "migration.harness.rolled_back.v1"
 
 	// ReservedEventPrefixExtensionPack reserves the "extension.pack." prefix
-	// for M5.1 (WASM + OCI capability packs). No event under this prefix is
-	// emitted during M5; the reservation is forward-compat documentation.
-	// Spec scenario asserts: Replay(0,0) never contains an EventType that
-	// starts with this prefix during the M5 cycle.
+	// for capability packs. In M5.1 the first real event materialises under
+	// this prefix: pack activation (EventExtensionPackActivated). WASM
+	// execution events will follow in M6.
 	ReservedEventPrefixExtensionPack = "extension.pack."
+
+	// EventExtensionPackActivated is emitted when a capability pack is
+	// activated for a tenant (M5.1). Payload: {name, version,
+	// integrity_digest, capabilities_required, permissions}; actor, tenant
+	// and occurred_at travel in the envelope. Emitted via journal.AppendIf
+	// on stream "extension.pack.{tenant}.{name}" — exactly once per
+	// (tenant, name) by optimistic concurrency (expected version 0).
+	EventExtensionPackActivated = "extension.pack.activated.v1"
 )
 
 // Actor identifies who or what performed an action. Actor and tenant are
