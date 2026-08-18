@@ -95,10 +95,6 @@ type semverBound struct {
 	major, minor int
 }
 
-func (a semverBound) less(b semverBound) bool {
-	return a.major < b.major || (a.major == b.major && a.minor < b.minor)
-}
-
 // parseSemverBound extracts the leading "major.minor" of a version literal
 // ("0.5", "v0.5.3", "0.6-beta"). Returns an error when no numeric prefix parses.
 func parseSemverBound(s string) (semverBound, error) {
