@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/Rubentxu/golem/internal/ports"
@@ -441,20 +442,5 @@ func isValidEventType(t string) bool {
 }
 
 func splitEventType(t string) []string {
-	var parts []string
-	var current []byte
-	for i := 0; i < len(t); i++ {
-		if t[i] == '.' {
-			if len(current) > 0 {
-				parts = append(parts, string(current))
-				current = nil
-			}
-			continue
-		}
-		current = append(current, t[i])
-	}
-	if len(current) > 0 {
-		parts = append(parts, string(current))
-	}
-	return parts
+	return strings.FieldsFunc(t, func(r rune) bool { return r == '.' })
 }

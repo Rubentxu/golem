@@ -2,6 +2,7 @@ package canonical
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -80,14 +81,14 @@ func (e *Exporter) Export(ctx context.Context) (Manifest, error) {
 	if err != nil {
 		return Manifest{}, fmt.Errorf("marshal journal position: %w", err)
 	}
-	jpDigest, err := ComputeSHA256(bytesReader(jpData))
+	jpDigest, err := ComputeSHA256(bytes.NewReader(jpData))
 	if err != nil {
 		return Manifest{}, fmt.Errorf("journal-position sha256: %w", err)
 	}
 	manifest.SetFileDigest("journal-position.json", jpDigest)
 
 	ontologyData := []byte(OntologySchemaJSON)
-	ontologyDigest, err := ComputeSHA256(bytesReader(ontologyData))
+	ontologyDigest, err := ComputeSHA256(bytes.NewReader(ontologyData))
 	if err != nil {
 		return Manifest{}, fmt.Errorf("ontology sha256: %w", err)
 	}
@@ -101,27 +102,27 @@ func (e *Exporter) Export(ctx context.Context) (Manifest, error) {
 	if err != nil {
 		return Manifest{}, fmt.Errorf("marshal manifest: %w", err)
 	}
-	if err := writeTarFile(tw, "manifest.json", bytesReader(manifestData)); err != nil {
+	if err := writeTarFile(tw, "manifest.json", bytes.NewReader(manifestData)); err != nil {
 		return Manifest{}, fmt.Errorf("tar manifest: %w", err)
 	}
 
 	// Write nodes.jsonl.
-	if err := writeTarFile(tw, "nodes.jsonl", bytesReader(nodesData)); err != nil {
+	if err := writeTarFile(tw, "nodes.jsonl", bytes.NewReader(nodesData)); err != nil {
 		return Manifest{}, fmt.Errorf("tar nodes: %w", err)
 	}
 
 	// Write edges.jsonl.
-	if err := writeTarFile(tw, "edges.jsonl", bytesReader(edgesData)); err != nil {
+	if err := writeTarFile(tw, "edges.jsonl", bytes.NewReader(edgesData)); err != nil {
 		return Manifest{}, fmt.Errorf("tar edges: %w", err)
 	}
 
 	// Write journal-position.json.
-	if err := writeTarFile(tw, "journal-position.json", bytesReader(jpData)); err != nil {
+	if err := writeTarFile(tw, "journal-position.json", bytes.NewReader(jpData)); err != nil {
 		return Manifest{}, fmt.Errorf("tar journal-position: %w", err)
 	}
 
 	// Write ontology.schema.json.
-	if err := writeTarFile(tw, "ontology.schema.json", bytesReader(ontologyData)); err != nil {
+	if err := writeTarFile(tw, "ontology.schema.json", bytes.NewReader(ontologyData)); err != nil {
 		return Manifest{}, fmt.Errorf("tar ontology: %w", err)
 	}
 
@@ -168,18 +169,18 @@ func (e *Exporter) collectEdges(ctx context.Context) ([]CanonicalEdge, error) {
 
 // encodeJSONL encodes items as newline-delimited JSON.
 func encodeJSONL[T any](items []T) ([]byte, string, error) {
-	buf := make([]byte, 0, len(items)*128)
-	enc := json.NewEncoder(bytesWriter{buf: &buf})
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
 	for _, item := range items {
 		if err := enc.Encode(item); err != nil {
 			return nil, "", err
 		}
 	}
-	digest, err := ComputeSHA256(bytesReader(buf))
+	digest, err := ComputeSHA256(bytes.NewReader(buf.Bytes()))
 	if err != nil {
 		return nil, "", err
 	}
-	return buf, digest, nil
+	return buf.Bytes(), digest, nil
 }
 
 // writeTarFile writes data to a tar file entry.
@@ -198,33 +199,4 @@ func writeTarFile(tw *tar.Writer, name string, r io.Reader) error {
 	}
 	_, err = tw.Write(data)
 	return err
-}
-
-// bytesReader returns an io.Reader from a byte slice.
-func bytesReader(b []byte) io.Reader {
-	return &bytesReaderImpl{b: b, i: 0}
-}
-
-type bytesReaderImpl struct {
-	b []byte
-	i int
-}
-
-func (r *bytesReaderImpl) Read(p []byte) (n int, err error) {
-	if r.i >= len(r.b) {
-		return 0, io.EOF
-	}
-	n = copy(p, r.b[r.i:])
-	r.i += n
-	return n, nil
-}
-
-// bytesWriter collects bytes.
-type bytesWriter struct {
-	buf *[]byte
-}
-
-func (w bytesWriter) Write(p []byte) (n int, err error) {
-	*w.buf = append(*w.buf, p...)
-	return len(p), nil
 }

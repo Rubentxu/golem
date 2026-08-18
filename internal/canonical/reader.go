@@ -2,6 +2,7 @@ package canonical
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -118,20 +119,7 @@ func (r *Reader) extractJSONL(tr *tar.Reader, name string, count uint64) ([]map[
 
 // splitJSONLines splits JSONL data into lines.
 func splitJSONLines(data []byte) [][]byte {
-	var lines [][]byte
-	start := 0
-	for i := 0; i < len(data); i++ {
-		if data[i] == '\n' {
-			if start < i {
-				lines = append(lines, data[start:i])
-			}
-			start = i + 1
-		}
-	}
-	if start < len(data) {
-		lines = append(lines, data[start:])
-	}
-	return lines
+	return bytes.Split(data, []byte("\n"))
 }
 
 // applyNodes applies node mutations to the graph in batches.

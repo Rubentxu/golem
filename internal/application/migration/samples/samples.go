@@ -4,6 +4,7 @@
 package samples
 
 import (
+	"encoding/binary"
 	"hash/fnv"
 	"sort"
 
@@ -41,10 +42,10 @@ func (s *Sampler) SampleNodeIDs(nodes []ports.Node, n int) []string {
 	result := make([]string, 0, count)
 	// Use FNV to deterministically pick indices.
 	h := fnv.New64a()
-	h.Write(uint64ToBytes(s.seed))
+	h.Write(binary.BigEndian.AppendUint64(nil, s.seed))
 	for i := 0; i < count; i++ {
 		h.Reset()
-		h.Write(uint64ToBytes(s.seed + uint64(i)))
+		h.Write(binary.BigEndian.AppendUint64(nil, s.seed+uint64(i)))
 		hash := h.Sum64()
 		idx := int(hash % uint64(len(sorted)))
 		result = append(result, sorted[idx].ID)
@@ -77,7 +78,7 @@ func (s *Sampler) SampleTraversalRoots(nodes []ports.Node, n int) []string {
 	h := fnv.New64a()
 	for i := 0; i < count; i++ {
 		h.Reset()
-		h.Write(uint64ToBytes(s.seed + uint64(i+1000))) // offset to differentiate from node samples
+		h.Write(binary.BigEndian.AppendUint64(nil, s.seed+uint64(i+1000))) // offset to differentiate from node samples
 		hash := h.Sum64()
 		idx := int(hash % uint64(len(nodes)))
 		result = append(result, nodes[idx].ID)
@@ -91,17 +92,4 @@ func (s *Sampler) SampleTraversalRoots(nodes []ports.Node, n int) []string {
 		}
 	}
 	return deduped
-}
-
-func uint64ToBytes(v uint64) []byte {
-	b := make([]byte, 8)
-	b[0] = byte(v >> 56)
-	b[1] = byte(v >> 48)
-	b[2] = byte(v >> 40)
-	b[3] = byte(v >> 32)
-	b[4] = byte(v >> 24)
-	b[5] = byte(v >> 16)
-	b[6] = byte(v >> 8)
-	b[7] = byte(v)
-	return b
 }
