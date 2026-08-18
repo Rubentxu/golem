@@ -238,7 +238,7 @@ func TestCanonicalRoundTrip(t *testing.T) {
 		TenantID: tenant,
 		Graph:    tgtGraph,
 	}
-	if err := reader.ReadFromReader(ctx, tr); err != nil {
+	if err := reader.ReadFromReader(ctx, tr, ReaderOpts{}); err != nil {
 		t.Fatalf("read from reader: %v", err)
 	}
 
