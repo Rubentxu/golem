@@ -9,48 +9,35 @@ import (
 	"syscall"
 	"time"
 
-	checkpointmem "github.com/Rubentxu/golem/adapters/checkpoint/memstore"
-	graphmem "github.com/Rubentxu/golem/adapters/graph/memstore"
-	journalmem "github.com/Rubentxu/golem/adapters/journal/memstore"
 	otelobs "github.com/Rubentxu/golem/adapters/observability/otel"
-	registrymem "github.com/Rubentxu/golem/adapters/registry/memstore"
-	searchmem "github.com/Rubentxu/golem/adapters/search/memstore"
-	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
+	"github.com/Rubentxu/golem/cmd/golem/bootstrap"
 	"github.com/Rubentxu/golem/internal/api/httpapi"
 	appci "github.com/Rubentxu/golem/internal/application/ci"
 	"github.com/Rubentxu/golem/internal/application/ingest"
 	appplanning "github.com/Rubentxu/golem/internal/application/planning"
 	appprojects "github.com/Rubentxu/golem/internal/application/projects"
 	apprelease "github.com/Rubentxu/golem/internal/application/release"
-	appreq "github.com/Rubentxu/golem/internal/application/requirements"
-	"github.com/Rubentxu/golem/internal/application/runtime"
+	appro "github.com/Rubentxu/golem/internal/application/requirements"
 	appscm "github.com/Rubentxu/golem/internal/application/scm"
 	appver "github.com/Rubentxu/golem/internal/application/verification"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
+	"github.com/Rubentxu/golem/internal/profile"
 )
 
-// golem-api is the API edge composition root (ARCHITECTURE stage A:
-// modular monolith — the process hosts the kernel and its tail loops;
-// adapters are selected here, ADR-045). The default profile wires the
-// in-memory reference adapters, suitable for development and the M1
-// demo; provider profiles (durable journal, NATS transport) arrive with
-// the M5 Provider Profile mechanism.
 func main() {
+	prof, err := profile.LoadFromEnv()
+	if err != nil {
+		log.Fatalf("profile load: %v", err)
+	}
+	log.Printf("profile=%s", prof.Name)
+
 	obsbundle, shutdownObs, err := otelobs.Setup(context.Background(), "golem-api", "0.1.0")
 	if err != nil {
 		log.Fatalf("observability setup: %v", err)
 	}
 	defer func() { _ = shutdownObs(context.Background()) }()
 
-	rt, err := runtime.New(runtime.Options{
-		Journal:    journalmem.NewJournal(),
-		Graph:      graphmem.NewGraph(),
-		Registry:   registrymem.NewRegistry(),
-		Transport:  transportmem.NewTransport(),
-		Checkpoint: checkpointmem.NewCheckpoints(),
-		Search:     searchmem.NewSearch(),
-		Obs:        obsbundle,
-	})
+	rt, err := bootstrap.NewRuntimeFromProfile(prof, obsbundle)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -59,7 +46,7 @@ func main() {
 	rt.Bus.Register(appwork.CmdLinkWorkItems, appwork.LinkWorkItemsHandler(rt.Graph))
 	rt.Bus.Register(appwork.CmdRegisterWorkType, appwork.RegisterWorkTypeHandler())
 	rt.Bus.Register(appwork.CmdAddComment, appwork.AddCommentHandler(rt.IDs, rt.Journal))
-	rt.Bus.Register(appreq.CmdCreateRequirement, appreq.CreateRequirementHandler(rt.IDs))
+	rt.Bus.Register(appro.CmdCreateRequirement, appro.CreateRequirementHandler(rt.IDs))
 	rt.Bus.Register(appprojects.CmdCreateProject, appprojects.CreateProjectHandler(rt.IDs))
 	rt.Bus.Register(appplanning.CmdCreateIteration, appplanning.CreateIterationHandler(rt.IDs))
 	rt.Bus.Register(appplanning.CmdCreateMilestone, appplanning.CreateMilestoneHandler(rt.IDs))
@@ -101,7 +88,7 @@ func main() {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	log.Printf("golem-api listening on %s (in-memory profile)", addr)
+	log.Printf("golem-api listening on %s", addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}

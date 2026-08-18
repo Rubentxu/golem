@@ -12,3 +12,8 @@ coverage.out
 
 # Local tooling caches
 .atl/
+
+# Compiled binaries at repo root
+/golem-api
+/golem-worker
+/golemctl
