@@ -94,7 +94,7 @@ func securityAgentHandler(llm ports.LLMProvider, redact *observability.Redactor)
 		// Call LLM
 		resp, err := llm.Complete(ctx, ports.LLMRequest{
 			TenantID: string(agent.TenantID),
-			Prompt:   promptBody,
+			Messages: []ports.LLMMessage{{Role: "user", Content: promptBody}},
 			Model:    "golem-security-v1",
 		})
 		if err != nil {

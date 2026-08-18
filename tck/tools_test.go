@@ -2,6 +2,7 @@ package tck
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -41,24 +42,19 @@ func TestTool_CatalogClosed(t *testing.T) {
 // TestTool_InvokeJournaled verifies that tool invocations are journaled
 // through the ToolInput/ToolOutput types.
 func TestTool_InvokeJournaled(t *testing.T) {
+	argsJSON, _ := json.Marshal(map[string]any{"key": "value"})
 	input := ports.ToolInput{
-		TenantID: "t-test",
-		ToolName: "test-tool",
-		Params:   map[string]any{"key": "value"},
+		TenantID:  "t-test",
+		FrameID:   "frame-001",
+		Arguments: argsJSON,
 	}
 
 	output := ports.ToolOutput{
-		TenantID: input.TenantID,
-		ToolName: input.ToolName,
-		Result:   "success",
-		Success:  true,
+		Result: argsJSON,
 	}
 
-	if output.TenantID != input.TenantID {
-		t.Errorf("output tenant mismatch: got %s, want %s", output.TenantID, input.TenantID)
-	}
-	if output.ToolName != input.ToolName {
-		t.Errorf("output tool name mismatch: got %s, want %s", output.ToolName, input.ToolName)
+	if string(output.Result) != string(input.Arguments) {
+		t.Errorf("output result mismatch")
 	}
 }
 
@@ -78,32 +74,26 @@ func TestTool_ActorTypeEnforced(t *testing.T) {
 func TestTool_VendorSDKNotImported(t *testing.T) {
 	// This test validates the port types exist without vendor dependencies
 	spec := ports.ToolSpec{
-		Name:        "test-tool",
+		ID:          "test-tool",
+		Version:     "v1",
 		Permissions: []ports.Permission{ports.PermissionGraphRead},
-		Description: "test tool",
 	}
-	if spec.Name != "test-tool" {
-		t.Errorf("tool spec name mismatch")
+	if spec.ID != "test-tool" {
+		t.Errorf("tool spec id mismatch")
 	}
 }
 
 // noopTool implements ports.Tool for interface tests.
 type noopTool struct{}
 
-func (noopTool) Invoke(ctx context.Context, input ports.ToolInput) (ports.ToolOutput, error) {
-	return ports.ToolOutput{
-		TenantID: input.TenantID,
-		ToolName: input.ToolName,
-		Result:   "noop",
-		Success:  true,
-	}, nil
+func (noopTool) ID() string              { return "noop" }
+func (noopTool) Version() string         { return "v1" }
+func (noopTool) Schema() json.RawMessage { return nil }
+func (noopTool) Permissions() []ports.Permission {
+	return []ports.Permission{ports.PermissionGraphRead}
 }
-func (noopTool) Spec() ports.ToolSpec {
-	return ports.ToolSpec{
-		Name:        "noop",
-		Permissions: []ports.Permission{ports.PermissionGraphRead},
-		Description: "noop tool",
-	}
+func (noopTool) Invoke(ctx context.Context, input ports.ToolInput) (ports.ToolOutput, error) {
+	return ports.ToolOutput{}, nil
 }
 
 var _ ports.Tool = (*noopTool)(nil)

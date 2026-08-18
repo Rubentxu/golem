@@ -13,13 +13,13 @@ func TestPropose_AppendsEvent(t *testing.T) {
 	proposal := ports.Proposal{
 		ID:       "p-001",
 		TenantID: "t-test",
-		Status:   ports.ProposalStatusProposed,
+		Status:   string(ports.ProposalStatusProposed),
 		TargetSpec: ports.TargetSpec{
 			Type: "node",
 			ID:   "n-001",
 		},
 	}
-	if proposal.Status != ports.ProposalStatusProposed {
+	if proposal.Status != string(ports.ProposalStatusProposed) {
 		t.Errorf("expected status proposed")
 	}
 }

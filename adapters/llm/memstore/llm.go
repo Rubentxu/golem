@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Rubentxu/golem/internal/ports"
 )
@@ -22,10 +23,11 @@ func New(responses map[string]ports.LLMResponse) *LLMStore {
 }
 
 // NewFromMap creates a new LLMStore from a map of prompt to response.
+// The first user message content is used as the lookup key.
 func NewFromMap(responses map[string]string) *LLMStore {
 	store := &LLMStore{responses: make(map[string]ports.LLMResponse)}
 	for prompt, content := range responses {
-		hash := hashRequest(prompt)
+		hash := hashMessages([]string{prompt})
 		store.responses[hash] = ports.LLMResponse{
 			Content:  content,
 			Provider: "memstore",
@@ -35,12 +37,12 @@ func NewFromMap(responses map[string]string) *LLMStore {
 }
 
 // Complete returns a deterministic response for the given request.
-// The response is indexed by sha256(prompt) for deterministic replay.
+// The response is indexed by sha256(messages) for deterministic replay.
 func (s *LLMStore) Complete(ctx context.Context, req ports.LLMRequest) (ports.LLMResponse, error) {
-	if req.Prompt == "" {
+	if len(req.Messages) == 0 {
 		return ports.LLMResponse{}, ports.ErrInvalidLLMRequest
 	}
-	hash := hashRequest(req.Prompt)
+	hash := hashRequestFromMessages(req.Messages)
 	resp, ok := s.responses[hash]
 	if !ok {
 		return ports.LLMResponse{}, ports.ErrProviderUnavailable
@@ -58,21 +60,47 @@ func (s *LLMStore) Capabilities() ports.LLMProviderCapabilities {
 	}
 }
 
-// hashRequest returns sha256 of the prompt for deterministic indexing.
+// hashRequest returns sha256 of a single string prompt (for embeddings compatibility).
 func hashRequest(prompt string) string {
 	h := sha256.Sum256([]byte(prompt))
 	return fmt.Sprintf("%x", h)
 }
 
-// AddResponse adds a response for a given prompt.
+// hashMessages returns sha256 of the concatenated message contents for deterministic indexing.
+func hashMessages(contents []string) string {
+	h := sha256.Sum256([]byte(strings.Join(contents, "\x00")))
+	return fmt.Sprintf("%x", h)
+}
+
+// hashRequestFromMessages returns sha256 of the request messages for deterministic indexing.
+func hashRequestFromMessages(messages []ports.LLMMessage) string {
+	contents := make([]string, len(messages))
+	for i, m := range messages {
+		contents[i] = m.Content
+	}
+	return hashMessages(contents)
+}
+
+// extractUserContent extracts the first user message content from messages.
+func extractUserContent(messages []ports.LLMMessage) string {
+	for _, m := range messages {
+		if m.Role == "user" {
+			return m.Content
+		}
+	}
+	return ""
+}
+
+// AddResponse adds a response for a given prompt content.
+// The first user message content is used as the lookup key.
 func (s *LLMStore) AddResponse(prompt string, response ports.LLMResponse) {
-	hash := hashRequest(prompt)
+	hash := hashMessages([]string{prompt})
 	s.responses[hash] = response
 }
 
-// ResponseFor returns the response for a given prompt, or an error if not found.
+// ResponseFor returns the response for a given prompt content, or an error if not found.
 func (s *LLMStore) ResponseFor(prompt string) (ports.LLMResponse, error) {
-	hash := hashRequest(prompt)
+	hash := hashMessages([]string{prompt})
 	resp, ok := s.responses[hash]
 	if !ok {
 		return ports.LLMResponse{}, fmt.Errorf("memstore: no response for prompt")

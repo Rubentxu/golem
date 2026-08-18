@@ -2,25 +2,34 @@ package ports
 
 import "context"
 
+// ProposalStatus is the status of a proposal (ADR-065).
+type ProposalStatus string
+
 // Proposal status constants.
 const (
-	ProposalStatusDraft      = "draft"
-	ProposalStatusProposed   = "proposed"
-	ProposalStatusApproved   = "approved"
-	ProposalStatusRejected   = "rejected"
-	ProposalStatusApplied    = "applied"
-	ProposalStatusConflicted = "conflicted"
+	ProposalStatusDraft      ProposalStatus = "draft"
+	ProposalStatusProposed   ProposalStatus = "proposed"
+	ProposalStatusApproved   ProposalStatus = "approved"
+	ProposalStatusRejected   ProposalStatus = "rejected"
+	ProposalStatusApplied    ProposalStatus = "applied"
+	ProposalStatusConflicted ProposalStatus = "conflicted"
 )
 
-// Proposal represents a change proposal (ADR-065).
+// Proposal represents a change proposal (ADR-065, C4).
+// Fields added per spec §7: Frame, EvidenceRefs, Risk, ObservedRevision.
 type Proposal struct {
-	ID         string
-	TenantID   string
-	Status     string
-	TargetSpec TargetSpec
-	Operations []Operation
-	Revision   uint64
-	Rationale  string
+	ID               string      `json:"id"`
+	TenantID         TenantID    `json:"tenant_id"`
+	Frame            Frame       `json:"frame"`             // execution frame (C4)
+	TargetSpec       TargetSpec  `json:"target_spec"`       // legacy field name preserved for app compat
+	ObservedRevision Revision    `json:"observed_revision"` // revision at proposal time (C4)
+	Operations       []Operation `json:"operations"`
+	Rationale        string      `json:"rationale"`
+	EvidenceRefs     []string    `json:"evidence_refs"` // evidence attached (C4)
+	Risk             string      `json:"risk"`          // "low" | "medium" | "high" (C4)
+	Status           string      `json:"status"`        // use string for UpdateStatus compat
+	Revision         uint64      `json:"revision"`      // optimistic revision
+	// Legacy fields preserved for application-layer compatibility
 	ProposedBy Actor
 	ProposedAt string
 	ApprovedBy Actor

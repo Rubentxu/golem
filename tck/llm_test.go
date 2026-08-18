@@ -38,7 +38,7 @@ func TestLLM_CapabilitiesRequired(t *testing.T) {
 func TestLLM_CompletionIdempotent(t *testing.T) {
 	req := ports.LLMRequest{
 		TenantID: "t-test",
-		Prompt:   "What is 2+2?",
+		Messages: []ports.LLMMessage{{Role: "user", Content: "What is 2+2?"}},
 	}
 	// This test validates the interface contract exists
 	var _ = req
@@ -50,7 +50,7 @@ func TestLLM_VendorDTOsNotExposed(t *testing.T) {
 	// LLMRequest and LLMResponse are port types, not vendor types
 	req := ports.LLMRequest{
 		TenantID: "t-test",
-		Prompt:   "test",
+		Messages: []ports.LLMMessage{{Role: "user", Content: "test"}},
 	}
-	_ = req.Prompt
+	_ = len(req.Messages)
 }
