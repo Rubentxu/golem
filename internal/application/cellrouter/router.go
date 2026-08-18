@@ -3,26 +3,68 @@ package cellrouter
 
 import (
 	"context"
+	"sync"
 	"time"
 
-	"github.com/Rubentxu/golem/adapters/cell/staticrouter"
 	"github.com/Rubentxu/golem/internal/ports"
 )
 
 // Service provides cell routing at the application layer.
 type Service struct {
-	router *staticrouter.Router
-	cache  *staticrouter.Cache
+	router ports.CellRouter
+	cache  *routingCache
+}
+
+// routingCache is a simple in-memory cache for routing decisions.
+type routingCache struct {
+	ttl   time.Duration
+	items map[string]cacheEntry
+	mu    sync.RWMutex
+}
+
+type cacheEntry struct {
+	cell    ports.CellID
+	expires time.Time
+}
+
+// NewRoutingCache creates a new routing cache.
+func newRoutingCache(ttl time.Duration, size int) *routingCache {
+	return &routingCache{
+		ttl:   ttl,
+		items: make(map[string]cacheEntry, size),
+	}
+}
+
+func (c *routingCache) Get(tenantID string) (ports.CellID, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	e, ok := c.items[tenantID]
+	if !ok || time.Now().After(e.expires) {
+		return "", false
+	}
+	return e.cell, true
+}
+
+func (c *routingCache) Set(tenantID string, cell ports.CellID) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items[tenantID] = cacheEntry{
+		cell:    cell,
+		expires: time.Now().Add(c.ttl),
+	}
+}
+
+func (c *routingCache) Invalidate(tenantID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.items, tenantID)
 }
 
 // NewService creates a cell routing service.
-func NewService(cells []ports.CellID, cacheTTLMs int, cacheSize int) *Service {
+func NewService(router ports.CellRouter, cacheTTL time.Duration, cacheSize int) *Service {
 	return &Service{
-		router: staticrouter.NewRouter(cells),
-		cache: staticrouter.NewCache(
-			time.Duration(cacheTTLMs)*time.Millisecond,
-			cacheSize,
-		),
+		router: router,
+		cache:  newRoutingCache(cacheTTL, cacheSize),
 	}
 }
 
