@@ -40,8 +40,8 @@ func Score(fixture Fixture, result Result) ScoringResult {
 	// Check operations count.
 	r.OperationsOK = true
 	if fixture.Expected.OperationsMinCount > 0 {
-		// ProposalID != "" indicates the harness ran the behavior and got proposals.
-		r.OperationsOK = result.ProposalID != ""
+		// OpCount > 0 indicates the harness ran the behavior and produced ops (I-6a).
+		r.OperationsOK = result.OpCount > 0
 	}
 
 	// Check rationale contains (if specified).
