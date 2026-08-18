@@ -19,27 +19,6 @@ type Reader struct {
 	Graph    ports.GraphStore
 }
 
-// ReadTar reads the tar archive from r and applies nodes/edges to the GraphStore.
-// It validates the manifest format_version and applies in batches of ≤500 operations.
-func (r *Reader) ReadTar(ctx context.Context, tr *tar.Reader) error {
-	// First pass: find and validate manifest.
-	manifest, err := r.readManifest(tr)
-	if err != nil {
-		return fmt.Errorf("read manifest: %w", err)
-	}
-
-	if err := manifest.Validate(); err != nil {
-		return err
-	}
-
-	// Reset tar reader to read files.
-	// We need to re-read from the start. The tar.Reader doesn't support seeking.
-	// Since we already read the manifest, we re-open caller side.
-	// Instead, we store the files as we read them.
-
-	return nil
-}
-
 // ReadFromReader reads the canonical export from an io.Reader (already a tar).
 // Caller provides the tar.Reader positioned at the start.
 func (r *Reader) ReadFromReader(ctx context.Context, tr *tar.Reader) error {
@@ -207,34 +186,6 @@ func (r *Reader) applyEdges(ctx context.Context, edges []map[string]any) error {
 		}
 	}
 	return nil
-}
-
-// ReadManifestFromTar reads and validates the manifest without applying content.
-func ReadManifestFromTar(tr *tar.Reader) (*Manifest, error) {
-	var manifest *Manifest
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			if manifest == nil {
-				return nil, fmt.Errorf("manifest.json not found")
-			}
-			return manifest, nil
-		}
-		if err != nil {
-			return nil, fmt.Errorf("tar.Next: %w", err)
-		}
-		if hdr.Name == "manifest.json" {
-			data, err := io.ReadAll(tr)
-			if err != nil {
-				return nil, fmt.Errorf("read manifest: %w", err)
-			}
-			var m Manifest
-			if err := json.Unmarshal(data, &m); err != nil {
-				return nil, fmt.Errorf("unmarshal manifest: %w", err)
-			}
-			manifest = &m
-		}
-	}
 }
 
 // ParseCanonicalNodes parses JSONL canonical nodes from raw bytes.

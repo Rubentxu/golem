@@ -330,15 +330,32 @@ func TestCanonicalUnsupportedFormatVersion(t *testing.T) {
 	tw.Write(data)
 	tw.Close()
 
+	// Extract manifest.json from tar using tr.Next().
 	tr := tar.NewReader(&buf)
-	m, err := ReadManifestFromTar(tr)
-	if err != nil {
-		t.Fatalf("ReadManifestFromTar: %v", err)
-	}
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			t.Fatalf("manifest.json not found in tar")
+		}
+		if err != nil {
+			t.Fatalf("tar.Next: %v", err)
+		}
+		if hdr.Name == "manifest.json" {
+			extracted, err := io.ReadAll(tr)
+			if err != nil {
+				t.Fatalf("io.ReadAll: %v", err)
+			}
+			var manifestFromTar Manifest
+			if err := json.Unmarshal(extracted, &manifestFromTar); err != nil {
+				t.Fatalf("json.Unmarshal: %v", err)
+			}
 
-	err = m.Validate()
-	if err == nil {
-		t.Fatalf("Validate() = nil, want ErrUnsupportedFormatVersion")
+			err = manifestFromTar.Validate()
+			if err == nil {
+				t.Fatalf("Validate() = nil, want ErrUnsupportedFormatVersion")
+			}
+			return
+		}
 	}
 }
 
