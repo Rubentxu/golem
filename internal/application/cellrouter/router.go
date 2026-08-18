@@ -19,7 +19,7 @@ type Service struct {
 func NewService(cells []ports.CellID, cacheTTLMs int, cacheSize int) *Service {
 	return &Service{
 		router: staticrouter.NewRouter(cells),
-		cache:  staticrouter.NewCache(
+		cache: staticrouter.NewCache(
 			time.Duration(cacheTTLMs)*time.Millisecond,
 			cacheSize,
 		),
