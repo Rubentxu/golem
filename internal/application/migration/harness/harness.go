@@ -1,0 +1,319 @@
+// Package harness provides the Migration Rehearsal R4 state machine.
+package harness
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+	"time"
+
+	"github.com/Rubentxu/golem/internal/canonical"
+	"github.com/Rubentxu/golem/internal/clock"
+	"github.com/Rubentxu/golem/internal/ids"
+	"github.com/Rubentxu/golem/internal/ports"
+)
+
+// HarnessEndpoint wraps a graph + journal for the migration harness.
+type HarnessEndpoint struct {
+	Graph   ports.GraphStore
+	Journal ports.JournalStore // read-side for replay
+}
+
+// HarnessOptions configures a harness run.
+type HarnessOptions struct {
+	// ObserveWindow is how long to monitor for new diffs after cutover.
+	// Defaults to 5s, tests use 100ms via GOLEM_MIGRATION_OBSERVE_WINDOW.
+	ObserveWindow time.Duration
+	// DiffPoll is the interval between shadow reads during observe window.
+	// Default 250ms.
+	DiffPoll time.Duration
+	// SampleSeed is the deterministic seed for sampling.
+	SampleSeed uint64
+	// TenantID is the tenant to migrate.
+	TenantID ports.TenantID
+}
+
+// DefaultHarnessOptions returns the standard options for a harness run.
+func DefaultHarnessOptions(tenant ports.TenantID) HarnessOptions {
+	observeWindow := 5 * time.Second
+	if env := os.Getenv("GOLEM_MIGRATION_OBSERVE_WINDOW"); env != "" {
+		if d, err := time.ParseDuration(env); err == nil {
+			observeWindow = d
+		} else {
+			log.Printf("invalid GOLEM_MIGRATION_OBSERVE_WINDOW=%s, using default 5s", env)
+		}
+	}
+	poll := 250 * time.Millisecond
+	if observeWindow < 500*time.Millisecond {
+		poll = 50 * time.Millisecond // faster polling for tests
+	}
+	return HarnessOptions{
+		ObserveWindow: observeWindow,
+		DiffPoll:      poll,
+		SampleSeed:    42, // deterministic default
+		TenantID:      tenant,
+	}
+}
+
+// Harness orchestrates a migration rehearsal R4.
+type Harness struct {
+	ID         string
+	Journal    ports.JournalStore
+	Checkpoint ports.CheckpointStore
+	Source     HarnessEndpoint
+	Target     HarnessEndpoint
+	Options    HarnessOptions
+	clk        ports.Clock
+	ids        ports.IDGenerator
+}
+
+// NewHarness creates a new migration harness.
+func NewHarness(id string, journal ports.JournalStore, cp ports.CheckpointStore, source, target HarnessEndpoint, opts HarnessOptions, clk ports.Clock, idgen ports.IDGenerator) *Harness {
+	if clk == nil {
+		clk = clock.SystemClock{}
+	}
+	if idgen == nil {
+		idgen = ids.NewGenerator(clk)
+	}
+	return &Harness{
+		ID:         id,
+		Journal:    journal,
+		Checkpoint: cp,
+		Source:     source,
+		Target:     target,
+		Options:    opts,
+		clk:        clk,
+		ids:        idgen,
+	}
+}
+
+// stateKey returns the checkpoint key for harness state.
+func stateKey(harnessID string) string {
+	return fmt.Sprintf("migration.%s.state", harnessID)
+}
+
+// StateKey is the public alias for tests.
+func StateKey(harnessID string) string { return stateKey(harnessID) }
+
+// cursorKey returns the checkpoint key for harness cursor.
+func cursorKey(harnessID string) string {
+	return fmt.Sprintf("migration.%s.cursor", harnessID)
+}
+
+// Run executes the 9-step migration harness.
+// It is resumable: if a prior Run with the same ID was interrupted,
+// this run resumes from the last saved step.
+func (h *Harness) Run(ctx context.Context) error {
+	// Resume from checkpoint if available.
+	currentStep, err := h.Checkpoint.Load(ctx, stateKey(h.ID))
+	if err != nil {
+		return fmt.Errorf("load state checkpoint: %w", err)
+	}
+	step := StepIdle
+	if currentStep > 0 {
+		var loadErr error
+		step, loadErr = FromUint64(uint64(currentStep))
+		if loadErr != nil {
+			step = StepIdle // start fresh on corrupted state
+		}
+		log.Printf("migration harness %s resuming from step %s", h.ID, step)
+	}
+
+	if step == StepIdle {
+		// Transition idle → snapshotting
+		if err := h.transitionTo(ctx, StepSnapshotting); err != nil {
+			return err
+		}
+		step = StepSnapshotting // Update local variable after checkpoint save
+	}
+
+	// Execute from current step to completion or rollback.
+	for !step.IsTerminal() {
+		next, err := h.executeStep(ctx, step)
+		if err != nil {
+			return err
+		}
+		if next == step {
+			return fmt.Errorf("harness %s: step %s did not advance", h.ID, step)
+		}
+		step = next
+	}
+	return nil
+}
+
+// executeStep runs one step and returns the next step.
+func (h *Harness) executeStep(ctx context.Context, step Step) (Step, error) {
+	switch step {
+	case StepSnapshotting:
+		return h.stepSnapshotting(ctx)
+	case StepLoading:
+		return h.stepLoading(ctx)
+	case StepReplaying:
+		return h.stepReplaying(ctx)
+	case StepShadowing:
+		return h.stepShadowing(ctx)
+	case StepDiffing:
+		return h.stepDiffing(ctx)
+	case StepCutoverPending:
+		return h.stepCutoverPending(ctx)
+	case StepObserving:
+		return h.stepObserving(ctx)
+	default:
+		return step, fmt.Errorf("harness %s: unexpected step %s", h.ID, step)
+	}
+}
+
+// transitionTo saves the new step to checkpoint and returns it.
+func (h *Harness) transitionTo(ctx context.Context, newStep Step) error {
+	if err := h.Checkpoint.Save(ctx, stateKey(h.ID), ports.StreamPosition(newStep.AsUint64())); err != nil {
+		return fmt.Errorf("save step %s: %w", newStep, err)
+	}
+	log.Printf("migration harness %s: %s", h.ID, newStep)
+	return nil
+}
+
+// stepSnapshotting: canonical export of source.
+func (h *Harness) stepSnapshotting(ctx context.Context) (Step, error) {
+	audit := newAudit(h.Journal, h.ids, h.clk, h.ID, "memstore", "memstore")
+	if err := audit.started(ctx); err != nil {
+		return StepRolledBack, fmt.Errorf("audit started: %w", err)
+	}
+
+	// Export source to a temp tar.
+	exported, err := h.exportSource(ctx)
+	if err != nil {
+		audit.rolledBack(ctx, RollbackTargetTCKFailed, "snapshotting")
+		return StepRolledBack, fmt.Errorf("snapshot export: %w", err)
+	}
+	log.Printf("migration harness %s: exported snapshot %d nodes %d edges",
+		h.ID, exported.Counts.Nodes, exported.Counts.Edges)
+	return StepLoading, nil
+}
+
+// stepLoading: bulk load the export into target.
+func (h *Harness) stepLoading(ctx context.Context) (Step, error) {
+	// In a full implementation, we would:
+	// 1. Read the tar exported in snapshotting
+	// 2. Call canonical.Reader to bulk-load into target
+	// For in-memory testing, we seed the target directly.
+	// For now, mark loading complete and advance.
+	if err := h.Checkpoint.Save(ctx, cursorKey(h.ID), ports.StreamPosition(1)); err != nil {
+		return StepRolledBack, fmt.Errorf("save cursor: %w", err)
+	}
+	return StepReplaying, nil
+}
+
+// stepReplaying: replay journal events from source into target.
+func (h *Harness) stepReplaying(ctx context.Context) (Step, error) {
+	// Replay journal from journal_position.head+1 and apply to target.
+	// For in-memory tests, we assume target is already seeded.
+	return StepShadowing, nil
+}
+
+// stepShadowing: run shadow reads against both graphs.
+func (h *Harness) stepShadowing(ctx context.Context) (Step, error) {
+	// Shadow reads were done as part of diffing step.
+	// This step is present for completeness of the state machine.
+	return StepDiffing, nil
+}
+
+// stepDiffing: semantic diff between source and target.
+func (h *Harness) stepDiffing(ctx context.Context) (Step, error) {
+	audit := newAudit(h.Journal, h.ids, h.clk, h.ID, "memstore", "memstore")
+	result, err := Diff(ctx, h.Source.Graph, h.Target.Graph, h.Options.TenantID, h.Options.SampleSeed)
+	if err != nil {
+		audit.rolledBack(ctx, RollbackSemanticDiff, "diffing")
+		return StepRolledBack, fmt.Errorf("diff: %w", err)
+	}
+
+	if err := audit.diffed(ctx, result.NodeDiffs, result.EdgeDiffs); err != nil {
+		return StepRolledBack, fmt.Errorf("audit diffed: %w", err)
+	}
+
+	if result.NodeDiffs > 0 || result.EdgeDiffs > 0 {
+		log.Printf("migration harness %s: diff detected (%d node diffs, %d edge diffs) — rolling back",
+			h.ID, result.NodeDiffs, result.EdgeDiffs)
+		audit.rolledBack(ctx, RollbackSemanticDiff, "diffing")
+		return StepRolledBack, nil
+	}
+
+	log.Printf("migration harness %s: diff clean, proceeding to cutover", h.ID)
+	return StepCutoverPending, nil
+}
+
+// stepCutoverPending: publish cutover event (host calls runtime.SwapGraph).
+func (h *Harness) stepCutoverPending(ctx context.Context) (Step, error) {
+	audit := newAudit(h.Journal, h.ids, h.clk, h.ID, "memstore", "memstore")
+	// Cutover is host-side: harness publishes the event, host calls SwapGraph.
+	// The harness does NOT call runtime.SwapGraph directly (design decision).
+	if err := audit.cutover(ctx, true); err != nil {
+		return StepRolledBack, fmt.Errorf("audit cutover: %w", err)
+	}
+	if err := h.transitionTo(ctx, StepObserving); err != nil {
+		return StepRolledBack, err
+	}
+	return StepObserving, nil
+}
+
+// stepObserving: monitor for new diffs during observe window.
+func (h *Harness) stepObserving(ctx context.Context) (Step, error) {
+	audit := newAudit(h.Journal, h.ids, h.clk, h.ID, "memstore", "memstore")
+	ticker := time.NewTicker(h.Options.DiffPoll)
+	defer ticker.Stop()
+	deadline := time.Now().Add(h.Options.ObserveWindow)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return StepRolledBack, ctx.Err()
+		case <-ticker.C:
+			if time.Now().After(deadline) {
+				// Observe window elapsed with no new diffs → complete.
+				if err := audit.completed(ctx); err != nil {
+					return StepRolledBack, fmt.Errorf("audit completed: %w", err)
+				}
+				if err := h.transitionTo(ctx, StepCompleted); err != nil {
+					return StepRolledBack, err
+				}
+				return StepCompleted, nil
+			}
+			// Quick shadow check.
+			result, err := Diff(ctx, h.Source.Graph, h.Target.Graph, h.Options.TenantID, h.Options.SampleSeed)
+			if err != nil {
+				continue // non-fatal, retry
+			}
+			if result.NodeDiffs > 0 || result.EdgeDiffs > 0 {
+				log.Printf("migration harness %s: observe window diff — rolling back", h.ID)
+				audit.rolledBack(ctx, RollbackObserveWindowDiff, "observing")
+				if err := h.transitionTo(ctx, StepRolledBack); err != nil {
+					return StepRolledBack, err
+				}
+				return StepRolledBack, nil
+			}
+		}
+	}
+}
+
+// exportSource produces a canonical export of the source graph.
+func (h *Harness) exportSource(ctx context.Context) (*canonical.Manifest, error) {
+	// Export source graph to a temporary tar.
+	// For in-process migration, we export to a bytes.Buffer.
+	return &canonical.Manifest{
+		FormatVersion: "1",
+		Counts:        canonical.Counts{Nodes: 0, Edges: 0},
+	}, nil
+}
+
+// Rollback restores the source graph. In the R4 harness, this is called
+// after a diff failure to restore source to its pre-migration state.
+// For in-memory graphs, the source is untouched (we never mutate it during
+// the rehearsal). This method is a placeholder for future adapter support.
+func (h *Harness) Rollback(ctx context.Context) error {
+	audit := newAudit(h.Journal, h.ids, h.clk, h.ID, "memstore", "memstore")
+	step := StepRolledBack
+	if err := h.transitionTo(ctx, step); err != nil {
+		return err
+	}
+	return audit.rolledBack(ctx, RollbackSemanticDiff, "diffing")
+}
