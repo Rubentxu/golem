@@ -67,6 +67,18 @@ const (
 	EventCellDemoted = "cell.demoted.v1"
 	// cell.routing.conflict_detected.v1: emitted when a routing conflict is detected.
 	EventCellRoutingConflict = "cell.routing.conflict_detected.v1"
+
+	// Tenant migration events (M8, ADR-075, REQ-MIG-003).
+	// tenant.migration.started.v1: emitted when migration begins.
+	EventTenantMigrationStarted = "tenant.migration.started.v1"
+	// tenant.migration.shadowed.v1: emitted after each shadow-read completed.
+	EventTenantMigrationShadowed = "tenant.migration.shadowed.v1"
+	// tenant.migration.cutover.v1: emitted when cutover begins.
+	EventTenantMigrationCutover = "tenant.migration.cutover.v1"
+	// tenant.migration.completed.v1: emitted on successful migration.
+	EventTenantMigrationCompleted = "tenant.migration.completed.v1"
+	// tenant.migration.failed.v1: emitted on failed migration.
+	EventTenantMigrationFailed = "tenant.migration.failed.v1"
 )
 
 // --- Agent event payloads (M7) ---
