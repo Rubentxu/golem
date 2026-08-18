@@ -47,6 +47,14 @@ func (f *fakeGraph) GetNode(_ context.Context, _ ports.TenantID, _ string) (port
 	return f.sub.Nodes[0], nil
 }
 
+func (f *fakeGraph) ListNodes(_ context.Context, _ ports.TenantID) ([]ports.Node, error) {
+	return f.sub.Nodes, nil
+}
+
+func (f *fakeGraph) ListEdges(_ context.Context, _ ports.TenantID) ([]ports.Edge, error) {
+	return f.sub.Edges, nil
+}
+
 func (f *fakeGraph) Apply(_ context.Context, tx ports.GraphMutation) (ports.Revision, error) {
 	if f.applyFn != nil {
 		return f.applyFn(tx)

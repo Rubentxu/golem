@@ -258,6 +258,54 @@ func (s *Store) GetNode(ctx context.Context, tenant ports.TenantID, nodeID strin
 	return copyNode(n), nil
 }
 
+// ListNodes returns all nodes for a tenant in ascending ID order.
+func (s *Store) ListNodes(ctx context.Context, tenant ports.TenantID) ([]ports.Node, error) {
+	_ = ctx
+	if tenant == "" {
+		return nil, ports.ErrEmptyTenant
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	g, ok := s.tenants[tenant]
+	if !ok {
+		return nil, nil
+	}
+	ids := make([]string, 0, len(g.nodes))
+	for id := range g.nodes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	result := make([]ports.Node, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, copyNode(g.nodes[id]))
+	}
+	return result, nil
+}
+
+// ListEdges returns all edges for a tenant in ascending ID order.
+func (s *Store) ListEdges(ctx context.Context, tenant ports.TenantID) ([]ports.Edge, error) {
+	_ = ctx
+	if tenant == "" {
+		return nil, ports.ErrEmptyTenant
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	g, ok := s.tenants[tenant]
+	if !ok {
+		return nil, nil
+	}
+	ids := make([]string, 0, len(g.edges))
+	for id := range g.edges {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	result := make([]ports.Edge, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, copyEdge(g.edges[id]))
+	}
+	return result, nil
+}
+
 func (g *tenantGraph) removeNode(id string) {
 	for eid := range g.adj[id] {
 		g.removeEdge(eid)

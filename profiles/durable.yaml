@@ -1,0 +1,1 @@
+{"version":1,"name":"durable","adapters":{"journal":"bbolt","graph":"memstore","registry":"memstore","transport":"natsjs","checkpoint":"memstore","search":"memstore"},"options":{"bbolt":{"path":"./var/golem.journal"}}}

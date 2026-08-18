@@ -112,5 +112,10 @@ type GraphStore interface {
 	// ErrNodeNotFound when the node does not exist in the tenant graph.
 	// (Query-safety bounds apply to traversals, not point lookups.)
 	GetNode(ctx context.Context, tenant TenantID, nodeID string) (Node, error)
+	// ListNodes returns all nodes for a tenant. Used by canonical export.
+	// Returns nodes in ascending ID order for deterministic results.
+	ListNodes(ctx context.Context, tenant TenantID) ([]Node, error)
+	// ListEdges returns all edges for a tenant in ascending ID order.
+	ListEdges(ctx context.Context, tenant TenantID) ([]Edge, error)
 	Capabilities(ctx context.Context) GraphCapabilities
 }

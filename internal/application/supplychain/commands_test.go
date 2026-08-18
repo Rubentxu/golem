@@ -35,6 +35,18 @@ func (f *fakeGraphStore) Capabilities(ctx context.Context) ports.GraphCapabiliti
 	return ports.GraphCapabilities{}
 }
 
+func (f *fakeGraphStore) ListNodes(ctx context.Context, tenant ports.TenantID) ([]ports.Node, error) {
+	result := make([]ports.Node, 0, len(f.nodes))
+	for _, n := range f.nodes {
+		result = append(result, n)
+	}
+	return result, nil
+}
+
+func (f *fakeGraphStore) ListEdges(ctx context.Context, tenant ports.TenantID) ([]ports.Edge, error) {
+	return nil, nil
+}
+
 // fakeSBOMParser implements ports.SBOMParser for tests.
 type fakeSBOMParser struct {
 	parsed ports.SBOMParsed

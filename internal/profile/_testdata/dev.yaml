@@ -1,0 +1,1 @@
+{"version":1,"name":"dev","adapters":{"journal":"memstore","graph":"memstore","registry":"memstore","transport":"memstore","checkpoint":"memstore","search":"memstore"}}
