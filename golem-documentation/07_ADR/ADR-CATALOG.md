@@ -60,3 +60,5 @@
 | [ADR-056](ADR-056.md) | Accepted | Typed graph traversal with explicit truncation || [ADR-058](ADR-058.md) | Accepted | Capability Packs v1: declarative activation over the journal |
 | [ADR-059](ADR-059.md) | Accepted | Behavior Engine v1: deterministic native behaviors |
 | [ADR-060](ADR-060.md) | Accepted | Scenarios: fork/diff/promote over overlay deltas |
+| [ADR-061](ADR-061.md) | Accepted | LLM Provider Port and Capabilities |
+| [ADR-062](ADR-062.md) | Accepted | Tool Port and Capability Catalog v2 |

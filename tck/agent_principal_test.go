@@ -46,8 +46,8 @@ func TestAgentPrincipal_Claims(t *testing.T) {
 	ap := agent.NewAgentPrincipal("test-agent")
 
 	claims := agent.AgentClaims{
-		LLMCapabilities:  ports.LLMProviderCapabilities{NoRetention: true, Region: "us-east-1", Audit: true},
-		ToolPermissions:  []string{ports.PermissionRead},
+		LLMCapabilities:   ports.LLMProviderCapabilities{NoRetention: true, Region: "us-east-1", Audit: true},
+		ToolPermissions:   []string{ports.PermissionRead},
 		EvaluationEnabled: true,
 	}
 	ap.SetClaims(claims)
