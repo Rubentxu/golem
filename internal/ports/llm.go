@@ -45,11 +45,19 @@ type LLMRequest struct {
 
 // LLMResponse is the output from LLMProvider.Complete (ADR-061).
 type LLMResponse struct {
-	TenantID  string `json:"tenant_id"`
-	Content   string `json:"content"` // completion text
-	Model     string `json:"model"`
-	Provider  string `json:"provider"` // adapter name (e.g., "openai-compatible", "memstore")
-	TokenUsed int    `json:"token_used,omitempty"`
+	TenantID string   `json:"tenant_id"`
+	Content  string   `json:"content"` // completion text
+	Model    string   `json:"model"`
+	Provider string   `json:"provider"` // adapter name (e.g., "openai-compatible", "memstore")
+	Usage    LLMUsage `json:"usage"`    // token usage from provider
+}
+
+// LLMUsage holds token counts and cost for an LLM response (ADR-061, AC-6).
+// Fields are provider-reported; sanity-bounded by the adapter.
+type LLMUsage struct {
+	InputTokens  int     `json:"input_tokens"`  // prompt tokens
+	OutputTokens int     `json:"output_tokens"` // completion tokens
+	CostUSD      float64 `json:"cost_usd"`      // observed cost in USD
 }
 
 // EmbeddingProvider is the port for embedding services (ADR-061).

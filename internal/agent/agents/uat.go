@@ -146,8 +146,8 @@ func makeUATAgentLLMCallEvent(agent *behavior.AgenticContext, resp ports.LLMResp
 		Provider:       resp.Provider,
 		Model:          resp.Model,
 		Operation:      operation,
-		InputTokens:    resp.TokenUsed / 2,
-		OutputTokens:   resp.TokenUsed / 2,
+		InputTokens:    resp.Usage.InputTokens,
+		OutputTokens:   resp.Usage.OutputTokens,
 		RedactedPrompt: redactedSummary, // real redaction of promptBody
 		CorrelationID:  correlationID,
 	}

@@ -60,8 +60,8 @@ func ObservableComplete(
 	inputTokens := 0
 	outputTokens := 0
 	if err == nil {
-		inputTokens = estimateInputTokens(req.Prompt)
-		outputTokens = resp.TokenUsed
+		inputTokens = resp.Usage.InputTokens
+		outputTokens = resp.Usage.OutputTokens
 	}
 
 	// End OTel span (ADR-068) — never record raw content.

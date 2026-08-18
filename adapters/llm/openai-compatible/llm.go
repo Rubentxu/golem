@@ -103,11 +103,15 @@ func (a *Adapter) Complete(ctx context.Context, req ports.LLMRequest) (ports.LLM
 				return ports.LLMResponse{}, ports.ErrProviderUnavailable
 			}
 			return ports.LLMResponse{
-				TenantID:  req.TenantID,
-				Content:   result.Choices[0].Message.Content,
-				Model:     result.Model,
-				Provider:  "openai-compatible",
-				TokenUsed: result.Usage.CompletionTokens,
+				TenantID: req.TenantID,
+				Content:  result.Choices[0].Message.Content,
+				Model:    result.Model,
+				Provider: "openai-compatible",
+				Usage: ports.LLMUsage{
+					InputTokens:  result.Usage.PromptTokens,
+					OutputTokens: result.Usage.CompletionTokens,
+					CostUSD:      0, // provider does not report cost
+				},
 			}, nil
 		}
 		lastErr = fmt.Errorf("openai: status %d", resp.StatusCode)
