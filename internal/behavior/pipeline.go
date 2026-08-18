@@ -1,0 +1,129 @@
+package behavior
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sort"
+
+	"github.com/Rubentxu/golem/internal/lens"
+	"github.com/Rubentxu/golem/internal/ports"
+)
+
+// ErrNoHandler is returned when a behavior has no handler wired.
+var ErrNoHandler = errors.New("behavior: handler is nil")
+
+// Engine drives the execution pipeline:
+//
+//	Accepted Event → subscription index → cheap predicates → candidate set
+//	→ graph pattern (lens) → handler → events/proposals
+type Engine struct {
+	registry *Registry
+	graph    ports.GraphStore
+	clock    ports.Clock
+}
+
+// NewEngine wires the engine. Clock is injected; output event IDs are
+// derived deterministically from the triggering event (see runIDs), which
+// makes replay byte-reproducible.
+func NewEngine(reg *Registry, graph ports.GraphStore, clock ports.Clock) *Engine {
+	return &Engine{registry: reg, graph: graph, clock: clock}
+}
+
+// Outcome is the observable result of executing one behavior for one event.
+type Outcome struct {
+	BehaviorID string
+	Version    string
+	Output     HandlerOutput
+	// Skipped records a cheap-predicate rejection or budget failure as an
+	// observable outcome, never as a kernel error.
+	Skipped string
+}
+
+// Handle runs the pipeline for one accepted event against every candidate
+// behavior, deterministically (candidates in registration order, outputs
+// sorted by EventID).
+func (e *Engine) Handle(ctx context.Context, event ports.RawEvent) ([]Outcome, error) {
+	candidates := e.registry.Candidates(event.EventType)
+	if len(candidates) == 0 {
+		return nil, nil // no-op (S5)
+	}
+	outcomes := make([]Outcome, 0, len(candidates))
+	run := newRunIDs(event.EventID)
+	for _, b := range candidates {
+		oc := Outcome{BehaviorID: b.ID, Version: b.Version}
+		if skip := reject(b, event); skip != "" {
+			oc.Skipped = skip
+			outcomes = append(outcomes, oc)
+			continue
+		}
+		if b.Handler == nil {
+			return nil, fmt.Errorf("%w: %s@%s", ErrNoHandler, b.ID, b.Version)
+		}
+
+		in := HandlerInput{Event: event, Clock: e.clock, IDs: run}
+		if b.LensSpec != nil {
+			tenant := ports.TenantID(event.TenantID)
+			spec := *b.LensSpec
+			if b.Relation != nil {
+				roots, err := b.Relation.RootsFromEvent(event)
+				if err != nil {
+					return nil, fmt.Errorf("behavior %s: relation roots: %w", b.ID, err)
+				}
+				if len(roots) == 0 {
+					oc.Skipped = "relation roots empty"
+					outcomes = append(outcomes, oc)
+					continue
+				}
+				spec.Roots = roots
+			}
+			res, err := lens.Execute(ctx, e.graph, tenant, spec)
+			if err != nil {
+				if errors.Is(err, lens.ErrLensBudgetExceeded) {
+					// Observable outcome, not a kernel error.
+					oc.Skipped = "lens budget exceeded"
+					outcomes = append(outcomes, oc)
+					continue
+				}
+				return nil, fmt.Errorf("behavior %s lens: %w", b.ID, err)
+			}
+			in.LensResult = *res
+		}
+
+		out, err := b.Handler(ctx, in)
+		if err != nil {
+			// Broken invariants or invalid inputs are errors
+			// (BEHAVIOR_RUNTIME.md §Failure model).
+			return nil, fmt.Errorf("behavior %s@%s handler: %w", b.ID, b.Version, err)
+		}
+		sort.Slice(out.Events, func(i, j int) bool { return out.Events[i].EventID < out.Events[j].EventID })
+		oc.Output = out
+		outcomes = append(outcomes, oc)
+	}
+	return outcomes, nil
+}
+
+// reject evaluates the cheap predicates; it returns a non-empty reason
+// when the behavior must skip the event.
+func reject(b *Behavior, event ports.RawEvent) string {
+	for _, f := range b.Filters {
+		var actual string
+		switch f.Field {
+		case "type":
+			actual = event.EventType
+		case "tenant":
+			actual = event.TenantID
+		case "stream":
+			actual = event.StreamID
+		default:
+			return "unknown filter field"
+		}
+		if f.Op != "==" {
+			return "unsupported filter op"
+		}
+		if actual != f.Value {
+			return "filter mismatch"
+		}
+	}
+	return ""
+}
