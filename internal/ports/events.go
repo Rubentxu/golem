@@ -97,6 +97,10 @@ const (
 	EventOIDCTokenVerified = "oidc.token.verified.v1"
 	// oidc.token.rejected.v1: emitted when JWT verification fails.
 	EventOIDCTokenRejected = "oidc.token.rejected.v1"
+
+	// Audit export events (M8, ADR-078, REQ-AUDIT-005).
+	// audit.export.completed.v1: emitted after successful canonical export + S3 upload + KMS sign.
+	EventAuditExportCompleted = "audit.export.completed.v1"
 )
 
 // --- Agent event payloads (M7) ---
@@ -185,6 +189,23 @@ type OIDCTokenRejectedPayload struct {
 	Error       string `json:"error"` // error message
 	Issuer      string `json:"issuer,omitempty"`
 	Correlation string `json:"correlation_id,omitempty"`
+}
+
+// AuditExportCompletedPayload is the payload for audit.export.completed.v1.
+// Emitted after a successful canonical export cycle: snapshot + tar + S3 upload + KMS sign (REQ-AUDIT-005).
+type AuditExportCompletedPayload struct {
+	TenantID      string   `json:"tenant_id"`
+	JournalHead   uint64   `json:"journal_head"`      // journal position at export time
+	NodeCount     uint64   `json:"node_count"`        // nodes exported
+	EdgeCount     uint64   `json:"edge_count"`        // edges exported
+	S3Bucket      string   `json:"s3_bucket"`         // destination S3 bucket
+	S3Key         string   `json:"s3_key"`            // destination S3 object key
+	KMSKeyAlias   string   `json:"kms_key_alias"`     // KMS key used for signing
+	Signature     string   `json:"signature"`         // hex signature over manifest
+	FormatVersion string   `json:"format_version"`    // "1" or "2"
+	Regions       []string `json:"regions,omitempty"` // S3 replication regions
+	DurationMs    int64    `json:"duration_ms"`       // export cycle duration
+	CorrelationID string   `json:"correlation_id,omitempty"`
 }
 
 // Actor identifies who or what performed an action. Actor and tenant are
