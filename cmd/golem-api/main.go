@@ -10,6 +10,7 @@ import (
 	"time"
 
 	otelobs "github.com/Rubentxu/golem/adapters/observability/otel"
+	fsregistry "github.com/Rubentxu/golem/adapters/registry/filesystem"
 	"github.com/Rubentxu/golem/cmd/golem/bootstrap"
 	"github.com/Rubentxu/golem/internal/api/httpapi"
 	appci "github.com/Rubentxu/golem/internal/application/ci"
@@ -76,6 +77,7 @@ func main() {
 		Handler: httpapi.New(rt.Bus, rt.Graph, rt.Journal).
 			WithSearch(rt.Search).
 			WithIngest(ingest.New(rt.Bus)).
+			WithPacks(fsregistry.New(fsregistry.DefaultRoot, rt.Journal, rt.IDs, rt.Clock)).
 			WithObservability(obsbundle).
 			Handler(),
 		ReadHeaderTimeout: 5 * time.Second,

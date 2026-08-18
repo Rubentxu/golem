@@ -130,6 +130,7 @@ type Server struct {
 	streams  StreamVersionReader
 	search   SearchReader
 	ingest   IngestService
+	packs    PackRegistry
 	obs      ports.Observability
 
 	idsOnce sync.Once
@@ -170,6 +171,7 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/packs/activate", s.handleActivatePack)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
