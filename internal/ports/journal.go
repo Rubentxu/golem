@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"encoding/json"
+	"errors"
 )
 
 // StreamPosition is the global, monotonically increasing position of an
@@ -53,4 +54,24 @@ type JournalStore interface {
 	// Head returns the position of the newest persisted event (0 when
 	// empty). Tail loops use it to measure lag (OBSERVABILITY.md).
 	Head(ctx context.Context) (StreamPosition, error)
+	// Backup creates a consistent snapshot and returns a handle.
+	Backup(ctx context.Context) (BackupHandle, error)
+	// Restore restores from a backup handle.
+	Restore(ctx context.Context, handle BackupHandle) error
 }
+
+// BackupHandle identifies a journal backup (REQ-DR-001).
+type BackupHandle struct {
+	ID       string `json:"id"`
+	Path     string `json:"path"`
+	Digest   string `json:"digest"` // sha256 of backup content
+	SizeBytes int64  `json:"size_bytes"`
+}
+
+// JournalStoreBackupErrors are the error sentinels for DR operations.
+var (
+	// ErrBackupInProgress is returned when a backup is already running.
+	ErrBackupInProgress = errors.New("journal: backup in progress")
+	// ErrRestoreMismatch is returned when the backup digest does not match.
+	ErrRestoreMismatch = errors.New("journal: restore digest mismatch")
+)
