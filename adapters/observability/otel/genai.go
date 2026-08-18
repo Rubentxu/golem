@@ -55,10 +55,10 @@ type LLMStartInput struct {
 
 // LLMEndInput carries the fields needed to end an LLM span.
 type LLMEndInput struct {
-	Span           ports.Span
-	InputTokens    int
-	OutputTokens   int
-	FinishReasons  []string
+	Span          ports.Span
+	InputTokens   int
+	OutputTokens  int
+	FinishReasons []string
 	Err           error
 }
 
@@ -112,7 +112,7 @@ type ToolStartInput struct {
 // ToolEndInput carries the fields needed to end a tool invoke span.
 type ToolEndInput struct {
 	Span ports.Span
-	Err error
+	Err  error
 }
 
 // StartToolInvokeSpan begins a genai.tool.invoke span and returns the

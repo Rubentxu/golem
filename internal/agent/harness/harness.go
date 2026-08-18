@@ -27,35 +27,35 @@ import (
 
 // Fixture describes one eval scenario loaded from a JSON file (ADR-070).
 type Fixture struct {
-	ID        string       `json:"id"`        // e.g. "security/sbom-cve-001"
-	TenantID  string      `json:"tenant_id"` // tenant scope
-	Kind      string      `json:"kind"`      // "AgentEvalFixture"
-	Version   int         `json:"version"`    // always 1
-	Input     FixtureInput `json:"input"`
-	Expected  FixtureExpected `json:"expected"`
-	Scoring   FixtureScoring `json:"scoring"`
+	ID       string          `json:"id"`        // e.g. "security/sbom-cve-001"
+	TenantID string          `json:"tenant_id"` // tenant scope
+	Kind     string          `json:"kind"`      // "AgentEvalFixture"
+	Version  int             `json:"version"`   // always 1
+	Input    FixtureInput    `json:"input"`
+	Expected FixtureExpected `json:"expected"`
+	Scoring  FixtureScoring  `json:"scoring"`
 }
 
 // FixtureInput is the input to a single eval scenario.
 type FixtureInput struct {
-	ScenarioID              string `json:"scenario_id"`
-	Frame                   ports.Frame `json:"frame"`
-	CanonicalExportPath     string `json:"canonical_export_path,omitempty"`
-	InitialGraphSnapshotPath string `json:"initial_graph_snapshot_path,omitempty"`
+	ScenarioID               string      `json:"scenario_id"`
+	Frame                    ports.Frame `json:"frame"`
+	CanonicalExportPath      string      `json:"canonical_export_path,omitempty"`
+	InitialGraphSnapshotPath string      `json:"initial_graph_snapshot_path,omitempty"`
 }
 
 // FixtureExpected describes the expected outcome of a fixture (ADR-070).
 type FixtureExpected struct {
 	ProposalID            string   `json:"proposal_id,omitempty"`
-	RationaleContains   []string `json:"rationale_contains,omitempty"`
-	OperationsMinCount   int      `json:"operations_min_count,omitempty"`
-	MustNotMutateDirectly bool   `json:"must_not_mutate_graph_directly,omitempty"`
-	PolicyViolationCount int      `json:"policy_violation_count,omitempty"`
+	RationaleContains     []string `json:"rationale_contains,omitempty"`
+	OperationsMinCount    int      `json:"operations_min_count,omitempty"`
+	MustNotMutateDirectly bool     `json:"must_not_mutate_graph_directly,omitempty"`
+	PolicyViolationCount  int      `json:"policy_violation_count,omitempty"`
 }
 
 // FixtureScoring describes the scoring weights for a fixture (ADR-070).
 type FixtureScoring struct {
-	PassFormula            string  `json:"pass_formula"`             // e.g. "rationale_matches AND operations_present AND policy_violations=0"
+	PassFormula           string  `json:"pass_formula"` // e.g. "rationale_matches AND operations_present AND policy_violations=0"
 	CostWeight            float64 `json:"cost_weight"`
 	LatencyWeight         float64 `json:"latency_weight"`
 	PolicyViolationWeight float64 `json:"policy_violation_weight"`
@@ -63,20 +63,20 @@ type FixtureScoring struct {
 
 // Result is the outcome of a single harness run (ADR-070).
 type Result struct {
-	Pass              bool     `json:"pass"`
-	EvalID           string   `json:"eval_id"`            // unique eval run ID
-	ProposalID       string   `json:"proposal_id"`       // proposed proposal ID (if any)
-	CostUSD          float64  `json:"cost_usd"`          // observed cost
-	LatencyMs        int64    `json:"latency_ms"`       // wall-clock ms
-	PolicyViolations int      `json:"policy_violations"` // policy violation count
-	Spans            []SpanMeta `json:"spans"`           // OTel span metadata
-	RollbackReason   string   `json:"rollback_reason,omitempty"`
+	Pass             bool       `json:"pass"`
+	EvalID           string     `json:"eval_id"`           // unique eval run ID
+	ProposalID       string     `json:"proposal_id"`       // proposed proposal ID (if any)
+	CostUSD          float64    `json:"cost_usd"`          // observed cost
+	LatencyMs        int64      `json:"latency_ms"`        // wall-clock ms
+	PolicyViolations int        `json:"policy_violations"` // policy violation count
+	Spans            []SpanMeta `json:"spans"`             // OTel span metadata
+	RollbackReason   string     `json:"rollback_reason,omitempty"`
 }
 
 // SpanMeta records OTel span metadata for a run (ADR-068).
 type SpanMeta struct {
-	Name         string `json:"name"`
-	TraceID      string `json:"trace_id"`
+	Name          string `json:"name"`
+	TraceID       string `json:"trace_id"`
 	CorrelationID string `json:"correlation_id"`
 }
 
@@ -101,7 +101,7 @@ type HarnessOptions struct {
 // DefaultHarnessOptions returns the standard options.
 func DefaultHarnessOptions() HarnessOptions {
 	return HarnessOptions{
-		Clock:      clock.SystemClock{},
+		Clock:       clock.SystemClock{},
 		IDGenerator: ids.NewGenerator(clock.SystemClock{}),
 	}
 }
@@ -299,15 +299,15 @@ func (h *Harness) emitEvalEvent(ctx context.Context, evalID string, fixture Fixt
 		return nil
 	}
 	payload := map[string]any{
-		"eval_id":            evalID,
-		"fixture_id":          fixture.ID,
-		"tenant_id":           fixture.TenantID,
-		"pass":                result.Pass,
-		"cost_usd":           result.CostUSD,
-		"latency_ms":         result.LatencyMs,
-		"policy_violations":   result.PolicyViolations,
-		"proposal_id":         result.ProposalID,
-		"rollback_reason":    result.RollbackReason,
+		"eval_id":           evalID,
+		"fixture_id":        fixture.ID,
+		"tenant_id":         fixture.TenantID,
+		"pass":              result.Pass,
+		"cost_usd":          result.CostUSD,
+		"latency_ms":        result.LatencyMs,
+		"policy_violations": result.PolicyViolations,
+		"proposal_id":       result.ProposalID,
+		"rollback_reason":   result.RollbackReason,
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {

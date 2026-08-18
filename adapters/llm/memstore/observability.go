@@ -70,20 +70,20 @@ func ObservableComplete(
 		InputTokens:   inputTokens,
 		OutputTokens:  outputTokens,
 		FinishReasons: finishReasons(err, resp),
-		Err:          err,
+		Err:           err,
 	})
 
 	// Emit journal event with redacted summary (ADR-066).
 	if journal != nil && idgen != nil {
 		payload := ports.AgentLLMCallPayload{
 			Provider:       "memstore",
-			Model:         req.Model,
-			Operation:     "complete",
-			InputTokens:   inputTokens,
-			OutputTokens:  outputTokens,
-			LatencyMs:     latencyMs,
+			Model:          req.Model,
+			Operation:      "complete",
+			InputTokens:    inputTokens,
+			OutputTokens:   outputTokens,
+			LatencyMs:      latencyMs,
 			RedactedPrompt: promptSummary.Summary,
-			CorrelationID: correlationID,
+			CorrelationID:  correlationID,
 		}
 		emitAgentLLMEvent(ctx, journal, clk, idgen, tenantID, actor, correlationID, payload)
 	}

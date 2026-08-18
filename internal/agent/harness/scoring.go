@@ -13,23 +13,23 @@ import (
 
 // ScoringResult is the detailed outcome of scoring one fixture.
 type ScoringResult struct {
-	Pass              bool    `json:"pass"`
-	PassReason       string   `json:"pass_reason,omitempty"`
-	FailReason       string   `json:"fail_reason,omitempty"`
-	RationaleMatches bool     `json:"rationale_matches"`
-	OperationsOK      bool     `json:"operations_ok"`
-	PolicyViolations bool     `json:"policy_violations_ok"`
-	WeightedScore    float64  `json:"weighted_score"`    // 0.0–1.0 (informational)
-	CostUSD          float64  `json:"cost_usd"`
-	LatencyMs        int64    `json:"latency_ms"`
-	PolicyViolationCount int `json:"policy_violation_count"`
+	Pass                 bool    `json:"pass"`
+	PassReason           string  `json:"pass_reason,omitempty"`
+	FailReason           string  `json:"fail_reason,omitempty"`
+	RationaleMatches     bool    `json:"rationale_matches"`
+	OperationsOK         bool    `json:"operations_ok"`
+	PolicyViolations     bool    `json:"policy_violations_ok"`
+	WeightedScore        float64 `json:"weighted_score"` // 0.0–1.0 (informational)
+	CostUSD              float64 `json:"cost_usd"`
+	LatencyMs            int64   `json:"latency_ms"`
+	PolicyViolationCount int     `json:"policy_violation_count"`
 }
 
 // Score evaluates the result against the fixture's expected outcome.
 // Returns a ScoringResult with Pass/fail decision and diagnostic fields.
 func Score(fixture Fixture, result Result) ScoringResult {
 	r := ScoringResult{
-		CostUSD:               result.CostUSD,
+		CostUSD:              result.CostUSD,
 		LatencyMs:            result.LatencyMs,
 		PolicyViolationCount: result.PolicyViolations,
 	}

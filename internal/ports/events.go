@@ -67,9 +67,9 @@ const (
 // Prompt and content are redacted by the Redactor before journal entry
 // (ADR-066). The correlation_id links to the OTel span (ADR-068).
 type AgentLLMCallPayload struct {
-	Provider        string `json:"provider"`         // e.g. "openai-compatible", "memstore"
+	Provider       string `json:"provider"`        // e.g. "openai-compatible", "memstore"
 	Model          string `json:"model"`           // model used
-	Operation      string `json:"operation"`        // e.g. "complete", "embed"
+	Operation      string `json:"operation"`       // e.g. "complete", "embed"
 	InputTokens    int    `json:"input_tokens"`    // usage.input_tokens
 	OutputTokens   int    `json:"output_tokens"`   // usage.output_tokens
 	LatencyMs      int64  `json:"latency_ms"`      // wall clock ms
@@ -79,30 +79,30 @@ type AgentLLMCallPayload struct {
 
 // AgentToolInvokePayload is the payload for agent.tool.invoked.v1.
 type AgentToolInvokePayload struct {
-	ToolID         string `json:"tool_id"`          // Tool.ID()
-	ToolVersion    string `json:"tool_version"`     // Tool.Version()
-	RedactedArgs   string `json:"redacted_args"`    // Redacted tool arguments (ADR-066)
-	CorrelationID  string `json:"correlation_id"`   // links to OTel span
+	ToolID        string `json:"tool_id"`        // Tool.ID()
+	ToolVersion   string `json:"tool_version"`   // Tool.Version()
+	RedactedArgs  string `json:"redacted_args"`  // Redacted tool arguments (ADR-066)
+	CorrelationID string `json:"correlation_id"` // links to OTel span
 }
 
 // AgentBudgetExceededPayload is the payload for agent.budget.exceeded.v1.
 type AgentBudgetExceededPayload struct {
 	BudgetKind string `json:"budget_kind"` // e.g. "token_cost", "wall_clock", "tool_calls"
-	Limit      string `json:"limit"`        // string representation of the limit
-	Actual     string `json:"actual"`       // string representation of actual consumption
+	Limit      string `json:"limit"`       // string representation of the limit
+	Actual     string `json:"actual"`      // string representation of actual consumption
 }
 
 // AgentPrincipalAuthenticatedPayload is the payload for agent.principal.authenticated.v1.
 type AgentPrincipalAuthenticatedPayload struct {
 	PrincipalType string `json:"principal_type"` // always "agent"
 	PrincipalID   string `json:"principal_id"`
-	FrameID      string `json:"frame_id,omitempty"`
+	FrameID       string `json:"frame_id,omitempty"`
 }
 
 // AgentInjectionDetectedPayload is the payload for agent.injection.detected.v1.
 type AgentInjectionDetectedPayload struct {
 	AttemptedContent string `json:"attempted_content"` // snippet of the injection attempt (redacted)
-	CorrelationID  string `json:"correlation_id"`
+	CorrelationID    string `json:"correlation_id"`
 }
 
 // Actor identifies who or what performed an action. Actor and tenant are

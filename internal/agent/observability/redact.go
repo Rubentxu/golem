@@ -32,10 +32,10 @@ const (
 type PIIKind string
 
 const (
-	PIIEmail   PIIKind = "email"
+	PIIEmail     PIIKind = "email"
 	PIIKindToken PIIKind = "token"
-	PIIURL    PIIKind = "url"
-	PIISecret PIIKind = "secret"
+	PIIURL       PIIKind = "url"
+	PIISecret    PIIKind = "secret"
 )
 
 // PIIToken records a detected PII token.
@@ -50,7 +50,7 @@ type PIIToken struct {
 // raw PII; the Summary field is guaranteed to be ≤ MaxRedactedSummaryBytes.
 // ADR-066: summary = SHA-256 + first line + char count + "# PII tokens".
 type RedactedSummary struct {
-	Summary        string      // redacted text, max 512 bytes
+	Summary        string     // redacted text, max 512 bytes
 	DetectedTokens []PIIToken // all PII tokens found (for journal evidence)
 }
 
