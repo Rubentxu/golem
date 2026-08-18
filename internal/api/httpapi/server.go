@@ -185,6 +185,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	// Deep readiness check (REQ-OPS-001)
+	mux.HandleFunc("GET /readyz", s.handleReadyz)
 	// Prometheus /metrics endpoint (REQ-OPS-001)
 	if s.MetricsHandler != nil {
 		mux.Handle("/metrics", s.MetricsHandler)
