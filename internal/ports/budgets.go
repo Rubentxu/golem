@@ -2,20 +2,21 @@ package ports
 
 import "fmt"
 
-// Budget constrains resource usage per execution (ADR-069).
+// BudgetLimits constrains resource usage per execution (ADR-069, M8 I-1).
 // It defines limits that are checked before allowing operations.
-type Budget struct {
-	TokenCost       float64 // cost per token (USD)
-	WallClockMs     int     // max wall clock time in ms
-	ToolCalls       int     // max tool invocations per run
-	ProposalsPerRun int     // max proposals per run
+// The JSON shape matches the held-out fixture format.
+type BudgetLimits struct {
+	TokenCostUSD    float64 `json:"token_cost_usd"`    // cost per token (USD), 0 = unlimited
+	WallClockMs     int64   `json:"wall_clock_ms"`     // max wall clock time in milliseconds, 0 = unlimited
+	ToolCalls       int64   `json:"tool_calls"`        // max tool invocations per run, 0 = unlimited
+	ProposalsPerRun int64   `json:"proposals_per_run"` // max proposals per run, 0 = unlimited
 }
 
 // Validate checks if the budget values are valid.
 // All values must be non-negative.
-func (b Budget) Validate() error {
-	if b.TokenCost < 0 {
-		return fmt.Errorf("budget: TokenCost must be non-negative")
+func (b BudgetLimits) Validate() error {
+	if b.TokenCostUSD < 0 {
+		return fmt.Errorf("budget: TokenCostUSD must be non-negative")
 	}
 	if b.WallClockMs < 0 {
 		return fmt.Errorf("budget: WallClockMs must be non-negative")
@@ -29,17 +30,17 @@ func (b Budget) Validate() error {
 	return nil
 }
 
-// Actual tracks the actual resource usage for comparison with Budget.
+// Actual tracks the actual resource usage for comparison with BudgetLimits.
 type Actual struct {
-	TokenCost   float64
-	WallClockMs int
-	ToolCalls   int
-	Proposals   int
+	TokenCostUSD float64 `json:"token_cost_usd"`
+	WallClockMs  int64   `json:"wall_clock_ms"`
+	ToolCalls    int64   `json:"tool_calls"`
+	Proposals    int64   `json:"proposals"`
 }
 
 // Exceeded returns true if any actual usage exceeds the budget limits.
-func (b Budget) Exceeded(actual Actual) bool {
-	if actual.TokenCost > b.TokenCost && b.TokenCost > 0 {
+func (b BudgetLimits) Exceeded(actual Actual) bool {
+	if actual.TokenCostUSD > b.TokenCostUSD && b.TokenCostUSD > 0 {
 		return true
 	}
 	if actual.WallClockMs > b.WallClockMs && b.WallClockMs > 0 {

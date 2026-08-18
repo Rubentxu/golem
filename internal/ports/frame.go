@@ -12,7 +12,7 @@ type Frame struct {
 	Permissions []string          `json:"permissions,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
 	// Budget constrains resource usage for this frame (ADR-069, M8 I-1).
-	Budget Budget `json:"budget,omitempty"`
+	Budget BudgetLimits `json:"budget,omitempty"`
 }
 
 // Validate checks that all permissions are in the closed catalog (ADR-058)

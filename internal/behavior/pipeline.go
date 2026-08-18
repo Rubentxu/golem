@@ -37,7 +37,7 @@ type EngineOptions struct {
 	// (overridden per-run via context).
 	AgenticFrame ports.Frame
 	// AgenticBudget is the budget for agentic behaviors.
-	AgenticBudget ports.Budget
+	AgenticBudget ports.BudgetLimits
 	// AgenticTracer is the OTel tracer for agentic spans (ADR-068).
 	AgenticTracer ports.Tracer
 	// AgenticJournal is the journal for agentic events.
