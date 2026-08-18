@@ -33,6 +33,13 @@ const (
 	// promoted_by}. Emitted on stream "scenario.{id}" after the overlay
 	// batch has been appended atomically.
 	EventScenarioPromoted = "scenario.delta.promoted.v1"
+
+	// Proposal lifecycle events (M7, ADR-065).
+	EventProposalProposed   = "proposal.proposed.v1"
+	EventProposalApproved   = "proposal.approved.v1"
+	EventProposalRejected   = "proposal.rejected.v1"
+	EventProposalConflicted = "proposal.conflicted.v1"
+	EventProposalApplied    = "proposal.applied.v1"
 )
 
 // Actor identifies who or what performed an action. Actor and tenant are
