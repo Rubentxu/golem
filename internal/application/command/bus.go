@@ -40,8 +40,17 @@ type Command struct {
 	CommandID     string
 	CorrelationID string
 	CausationID   string
-	FrameID       string
+	Frame         *ports.Frame // replaces FrameID string (ADR-064)
 	Payload       any
+}
+
+// FrameID returns the frame ID for backwards compatibility.
+// Returns empty string if Frame is nil.
+func (c Command) FrameID() string {
+	if c.Frame == nil {
+		return ""
+	}
+	return c.Frame.ID
 }
 
 // EventDraft is a domain-authored event awaiting envelope assignment. The
@@ -194,7 +203,8 @@ func (b *Bus) submit(ctx context.Context, cmd Command, commandID, correlation st
 			CorrelationID: correlation,
 			CausationID:   cmd.CausationID,
 			CommandID:     commandID,
-			FrameID:       cmd.FrameID,
+			FrameID:       cmd.FrameID(),
+			Frame:         cmd.Frame,
 			Payload:       payload,
 			EvidenceRefs:  d.EvidenceRefs,
 		})

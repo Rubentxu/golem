@@ -47,6 +47,9 @@ type Actor struct {
 // Invariants: EventID is unique, the payload is immutable after acceptance,
 // schemas are versioned, actor and tenant are mandatory, causation is
 // explicit when it exists, and secrets never enter the journal.
+//
+// Frame (M7) replaces FrameID for agentic behaviors. MarshalJSON writes
+// frame_id for backwards compatibility with v1 readers (ADR-064).
 type Envelope[T any] struct {
 	EventID       string    `json:"event_id"`
 	TenantID      string    `json:"tenant_id"`
@@ -58,7 +61,8 @@ type Envelope[T any] struct {
 	CorrelationID string    `json:"correlation_id,omitempty"`
 	CausationID   string    `json:"causation_id,omitempty"`
 	CommandID     string    `json:"command_id,omitempty"`
-	FrameID       string    `json:"frame_id,omitempty"`
+	FrameID       string    `json:"frame_id,omitempty"` // kept for v1 backwards compat
+	Frame         *Frame    `json:"frame,omitempty"`    // M7: replaces FrameID
 	Payload       T         `json:"payload"`
 	EvidenceRefs  []string  `json:"evidence_refs,omitempty"`
 }
