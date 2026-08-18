@@ -211,7 +211,8 @@ func TestApplyHandler_AppliesApprovedProposal(t *testing.T) {
 		Revision: 2,
 	}
 	clk := clock.SystemClock{}
-	h := ApplyHandler(store, clk)
+	policy := &mockPolicy{outcome: ports.DecisionOutcomeAllow}
+	h := ApplyHandler(store, policy, clk)
 
 	cmd := appcmd.Command{
 		Name:     CmdApply,
@@ -249,7 +250,8 @@ func TestApplyHandler_VersionConflict(t *testing.T) {
 		Revision: 3, // expected 2 but actual is 3
 	}
 	clk := clock.SystemClock{}
-	h := ApplyHandler(store, clk)
+	policy := &mockPolicy{outcome: ports.DecisionOutcomeAllow}
+	h := ApplyHandler(store, policy, clk)
 
 	cmd := appcmd.Command{
 		Name:     CmdApply,

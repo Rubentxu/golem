@@ -249,8 +249,9 @@ func RejectHandler(store ports.ProposalStore, clock ports.Clock) appcmd.Handler 
 
 // ApplyHandler returns a handler for CmdApply that applies an approved proposal
 // over the journal with optimistic revision checking. Only approved proposals
-// can be applied.
-func ApplyHandler(store ports.ProposalStore, clock ports.Clock) appcmd.Handler {
+// can be applied. Policy evaluation gates the apply: if policy denies, the
+// proposal is NOT applied (REQ-006 / ADR-021).
+func ApplyHandler(store ports.ProposalStore, policy ports.PolicyEvaluator, clock ports.Clock) appcmd.Handler {
 	return func(ctx context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
 		p, ok := cmd.Payload.(ApplyPayload)
 		if !ok {
@@ -278,6 +279,21 @@ func ApplyHandler(store ports.ProposalStore, clock ports.Clock) appcmd.Handler {
 		}
 		if p.ExpectedVersion > 0 && proposal.Revision != p.ExpectedVersion {
 			return nil, ports.ErrVersionConflict
+		}
+
+		// Policy gate: evaluate "proposal.apply" before mutating.
+		// If policy denies, do NOT apply — return error without UpdateStatus.
+		action := ports.Action{
+			Actor:  p.Actor,
+			Target: "proposal:" + p.ProposalID,
+			Type:   "proposal.apply",
+		}
+		decision, err := policy.Evaluate(ctx, action)
+		if err != nil {
+			return nil, fmt.Errorf("policy evaluate: %w", err)
+		}
+		if decision.Outcome != ports.DecisionOutcomeAllow {
+			return nil, ErrPolicyDenied
 		}
 
 		proposal.Status = ports.ProposalStatusApplied
