@@ -2,7 +2,6 @@ package memstore
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 
 	"github.com/Rubentxu/golem/internal/ports"
