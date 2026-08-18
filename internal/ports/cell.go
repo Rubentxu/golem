@@ -2,6 +2,21 @@ package ports
 
 import (
 	"context"
+	"errors"
+)
+
+// Cell routing errors (REQ-CELL-001..006).
+var (
+	// ErrCellNotFound is returned when a cell does not exist.
+	ErrCellNotFound = errors.New("cell: not found")
+	// ErrCellDraining is returned when a cell is draining and not accepting new appends.
+	ErrCellDraining = errors.New("cell: draining")
+	// ErrMigrationInProgress is returned when a migration is already running for the tenant.
+	ErrMigrationInProgress = errors.New("cell: migration in progress")
+	// ErrCutoverWindowExpired is returned when the cutover window has expired.
+	ErrCutoverWindowExpired = errors.New("cell: cutover window expired")
+	// ErrRoutingTableEmpty is returned when the routing table is empty.
+	ErrRoutingTableEmpty = errors.New("cell: routing table empty")
 )
 
 // CellID is the identifier for a cell (REQ-CELL-001).
