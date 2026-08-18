@@ -91,6 +91,12 @@ const (
 	EventOpsConsoleActionCompleted = "ops.console.action.completed.v1"
 	// ops.console.action.rejected.v1: emitted when an admin operation fails.
 	EventOpsConsoleActionRejected = "ops.console.action.rejected.v1"
+
+	// OIDC events (M8, ADR-082, REQ-OIDC-004).
+	// oidc.token.verified.v1: emitted after successful JWT verification.
+	EventOIDCTokenVerified = "oidc.token.verified.v1"
+	// oidc.token.rejected.v1: emitted when JWT verification fails.
+	EventOIDCTokenRejected = "oidc.token.rejected.v1"
 )
 
 // --- Agent event payloads (M7) ---
@@ -164,6 +170,21 @@ type OpsConsoleActionPayload struct {
 	Subject     string `json:"subject,omitempty"` // principal subject
 	Correlation string `json:"correlation_id,omitempty"`
 	Detail      string `json:"detail,omitempty"` // error message if rejected
+}
+
+// OIDCTokenVerifiedPayload is the payload for oidc.token.verified.v1.
+type OIDCTokenVerifiedPayload struct {
+	Subject     string   `json:"subject"`
+	Issuer      string   `json:"issuer"`
+	Groups      []string `json:"groups,omitempty"`
+	Correlation string   `json:"correlation_id,omitempty"`
+}
+
+// OIDCTokenRejectedPayload is the payload for oidc.token.rejected.v1.
+type OIDCTokenRejectedPayload struct {
+	Error       string `json:"error"` // error message
+	Issuer      string `json:"issuer,omitempty"`
+	Correlation string `json:"correlation_id,omitempty"`
 }
 
 // Actor identifies who or what performed an action. Actor and tenant are
