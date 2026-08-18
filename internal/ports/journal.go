@@ -62,9 +62,9 @@ type JournalStore interface {
 
 // BackupHandle identifies a journal backup (REQ-DR-001).
 type BackupHandle struct {
-	ID       string `json:"id"`
-	Path     string `json:"path"`
-	Digest   string `json:"digest"` // sha256 of backup content
+	ID        string `json:"id"`
+	Path      string `json:"path"`
+	Digest    string `json:"digest"` // sha256 of backup content
 	SizeBytes int64  `json:"size_bytes"`
 }
 

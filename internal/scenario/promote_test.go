@@ -51,6 +51,14 @@ func (f *fakeJournal) Head(_ context.Context) (ports.StreamPosition, error) {
 	return f.pos, nil
 }
 
+func (f *fakeJournal) Backup(_ context.Context) (ports.BackupHandle, error) {
+	return ports.BackupHandle{}, nil
+}
+
+func (f *fakeJournal) Restore(_ context.Context, _ ports.BackupHandle) error {
+	return nil
+}
+
 // S20 — promote happy path: batch + scenario.promoted.v1, lineage ok.
 func TestPromote_HappyPath(t *testing.T) {
 	j := &fakeJournal{pos: 7} // journal head at 7

@@ -75,6 +75,12 @@ func (f journalFunc) Replay(ctx context.Context, _ ports.StreamPosition, _ int) 
 func (f journalFunc) Head(context.Context) (ports.StreamPosition, error) {
 	return 0, nil
 }
+func (f journalFunc) Backup(context.Context) (ports.BackupHandle, error) {
+	return ports.BackupHandle{}, nil
+}
+func (f journalFunc) Restore(context.Context, ports.BackupHandle) error {
+	return nil
+}
 
 var okHandler Handler = func(_ context.Context, _ Command) ([]EventDraft, error) {
 	return []EventDraft{{

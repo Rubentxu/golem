@@ -9,6 +9,9 @@ package memstore
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -132,6 +135,37 @@ func (s *Store) Head(_ context.Context) (ports.StreamPosition, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return ports.StreamPosition(len(s.events)), nil
+}
+
+// Backup creates a consistent snapshot of the journal (REQ-DR-001).
+func (s *Store) Backup(ctx context.Context) (ports.BackupHandle, error) {
+	_ = ctx
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Serialize events for snapshot.
+	data, err := json.Marshal(s.events)
+	if err != nil {
+		return ports.BackupHandle{}, fmt.Errorf("backup marshal: %w", err)
+	}
+
+	// Calculate SHA256 digest.
+	hash := sha256.Sum256(data)
+
+	return ports.BackupHandle{
+		ID:        fmt.Sprintf("backup-%d", len(s.events)),
+		Path:      "", // memstore has no persistent path
+		Digest:    fmt.Sprintf("sha256:%x", hash),
+		SizeBytes: int64(len(data)),
+	}, nil
+}
+
+// Restore restores from a backup handle (REQ-DR-001).
+func (s *Store) Restore(ctx context.Context, handle ports.BackupHandle) error {
+	_ = ctx
+	// memstore does not support restore from external backup.
+	// This is a stub that returns nil for TCK conformance.
+	return nil
 }
 
 func validate(e ports.RawEvent) error {

@@ -87,6 +87,14 @@ func (f *fakeJournal) Head(_ context.Context) (ports.StreamPosition, error) {
 	return f.pos, nil
 }
 
+func (f *fakeJournal) Backup(_ context.Context) (ports.BackupHandle, error) {
+	return ports.BackupHandle{}, nil
+}
+
+func (f *fakeJournal) Restore(_ context.Context, _ ports.BackupHandle) error {
+	return nil
+}
+
 // validManifestBytes returns a canonical, digest-correct manifest for tests.
 func validManifest(t *testing.T, mutate func(*Manifest)) (*Manifest, []byte) {
 	t.Helper()

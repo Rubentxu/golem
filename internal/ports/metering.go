@@ -18,7 +18,7 @@ type MeteringEvent struct {
 // MeteringRollup is the hourly aggregated metering data (REQ-METER-002).
 type MeteringRollup struct {
 	TenantID     string    `json:"tenant_id"`
-	Hour         time.Time `json:"hour"`         // truncated to hour
+	Hour         time.Time `json:"hour"` // truncated to hour
 	Capability   string    `json:"capability"`
 	TotalUnits   int64     `json:"total_units"`
 	TotalCostUSD float64   `json:"total_cost_usd"`

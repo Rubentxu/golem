@@ -15,7 +15,7 @@ func TestAlert_SeverityRank(t *testing.T) {
 		Severity: AlertSeverityCritical,
 		Route:    "https:// pagerduty.com /services/abc",
 		Message:  "SLO budget exhausted",
-		SLIName: "command-api",
+		SLIName:  "command-api",
 	}
 
 	if alert.Severity != AlertSeverityCritical {

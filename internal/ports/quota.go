@@ -16,9 +16,9 @@ const (
 
 // QuotaDecision is the outcome of quota checking (REQ-QUOTA-002..003).
 type QuotaDecision struct {
-	Outcome    string `json:"outcome"` // "allowed", "denied", "throttled"
-	Mode      QuotaMode `json:"mode"`
-	RetryAfterMs int64   `json:"retry_after_ms,omitempty"`
+	Outcome      string    `json:"outcome"` // "allowed", "denied", "throttled"
+	Mode         QuotaMode `json:"mode"`
+	RetryAfterMs int64     `json:"retry_after_ms,omitempty"`
 }
 
 // QuotaEnforcer checks and consumes quota before command execution (REQ-QUOTA-001..005).

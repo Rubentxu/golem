@@ -145,6 +145,14 @@ func (t *testJournalStore) Head(_ context.Context) (ports.StreamPosition, error)
 	return 0, nil
 }
 
+func (t *testJournalStore) Backup(_ context.Context) (ports.BackupHandle, error) {
+	return ports.BackupHandle{}, nil
+}
+
+func (t *testJournalStore) Restore(_ context.Context, _ ports.BackupHandle) error {
+	return nil
+}
+
 // --- Tests ---
 
 // TestCanonicalRoundTrip verifies that Export → import produces equivalent node results.

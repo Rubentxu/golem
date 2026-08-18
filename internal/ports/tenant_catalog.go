@@ -6,26 +6,26 @@ import "context"
 type TenantTier string
 
 const (
-	TenantTierStandard   TenantTier = "standard"
-	TenantTierRegulated  TenantTier = "regulated"
+	TenantTierStandard  TenantTier = "standard"
+	TenantTierRegulated TenantTier = "regulated"
 )
 
 // TenantRecord is the full record for a tenant (REQ-CAT-001).
 type TenantRecord struct {
-	ID         string      `json:"id"`
-	CellID     CellID      `json:"cell_id"`
-	Tier       TenantTier  `json:"tier"`
-	Region     string      `json:"region"`
-	Quotas     map[string]int64 `json:"quotas,omitempty"`
-	Policies   []string    `json:"policies,omitempty"`
-	CreatedAt  int64       `json:"created_at"`
+	ID        string           `json:"id"`
+	CellID    CellID           `json:"cell_id"`
+	Tier      TenantTier       `json:"tier"`
+	Region    string           `json:"region"`
+	Quotas    map[string]int64 `json:"quotas,omitempty"`
+	Policies  []string         `json:"policies,omitempty"`
+	CreatedAt int64            `json:"created_at"`
 }
 
 // TenantFilter provides filter criteria for listing tenants.
 type TenantFilter struct {
-	CellID   CellID    `json:"cell_id,omitempty"`
+	CellID   CellID     `json:"cell_id,omitempty"`
 	Tier     TenantTier `json:"tier,omitempty"`
-	PageSize int       `json:"page_size,omitempty"`
+	PageSize int        `json:"page_size,omitempty"`
 }
 
 // TenantCatalog is the control plane for tenant management (REQ-CAT-001..002).
