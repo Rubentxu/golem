@@ -4,7 +4,7 @@
   "baseline": "0.1",
   "generated": "2026-08-17",
   "language": "es-ES",
-  "file_count": 144,
+  "file_count": 145,
   "adr_count": 57,
   "validation": {
     "json": "valid",
@@ -135,6 +135,7 @@
     "09_OPERATIONS/DISASTER_RECOVERY.md": "847c1c81e158ee2b14984e94ab585484e2cb62c44a713b0e3f5f307b0a536ef6",
     "09_OPERATIONS/OBSERVABILITY.md": "834770d23d41ed743b270b63c40653df45216db4816384b65084c1fdadb9b346",
     "09_OPERATIONS/SLOS.md": "739970ba9f54ae213c3f7b508e9198af075dcc7f61e86b9021ff625dc06955e4",
+    "runbooks/m5-demo-walkthrough.md": "5d646a2d32a116697049a740740547c01f1aa0b5dbe47dcbbcb6b06daaa3c988",
     "10_GOVERNANCE/CONTRIBUTING.md": "0794c1b48f425dec08f76b0b4858933bb18108fcc9ff588fb3dc2e41f9ed72f7",
     "10_GOVERNANCE/DECISION_TRACEABILITY.md": "2bde2e1cfc9a151c734e6e788aea7e40887e62e5579863533496d49ce6820826",
     "10_GOVERNANCE/DOCUMENTATION_GOVERNANCE.md": "c4d61fd1cf9eaedd1e6956b34ca8a615948e08abdf90c68e29c466f302d68522",
