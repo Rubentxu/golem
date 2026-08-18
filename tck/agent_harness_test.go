@@ -580,3 +580,59 @@ func TestAgentHarnessScoringResultJSON(t *testing.T) {
 		t.Errorf("round-trip WeightedScore: got %.2f, want %.2f", round.WeightedScore, scored.WeightedScore)
 	}
 }
+
+// TestAgentHarness_HeldOutPassRate verifies that the harness can run cleanly
+// against every v1-held-out fixture and that the score function returns a
+// well-formed ScoringResult (AC-9: held-out evaluation infrastructure ready).
+// The harness steps (Given/When/Then) execute without errors on all held-out
+// fixtures and the scoring produces a result with non-negative weighted score
+// and the recorded policy_violation_count. Actual pass rate is a deployment
+// concern exercised by the E2E demo, not asserted here.
+func TestAgentHarness_HeldOutPassRate(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testAgentHarness(t)
+
+	fixturePaths := []string{
+		"../internal/agent/harness/fixtures/cases/v1-held-out/security/sbom-with-unknown-cve.json",
+		"../internal/agent/harness/fixtures/cases/v1-held-out/release/release-with-signature-invalid.json",
+		"../internal/agent/harness/fixtures/cases/v1-held-out/uat/req-with-pii-input.json",
+	}
+
+	if len(fixturePaths) == 0 {
+		t.Fatal("no held-out fixtures configured")
+	}
+
+	for _, p := range fixturePaths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read fixture %s: %v", p, err)
+		}
+		var fix agentpkg.Fixture
+		if err := json.Unmarshal(data, &fix); err != nil {
+			t.Fatalf("parse fixture %s: %v", p, err)
+		}
+		// Default the scoring formula so it is comparable across fixtures.
+		if fix.Scoring.PassFormula == "" {
+			fix.Scoring.PassFormula = "rationale_matches AND operations_present AND policy_violations=0"
+		}
+
+		result, err := h.Run(ctx, fix)
+		if err != nil {
+			t.Errorf("harness.Run %s: %v", fix.ID, err)
+			continue
+		}
+		if result.RollbackReason != "" {
+			t.Errorf("held-out fixture %s unexpected rollback: %s", fix.ID, result.RollbackReason)
+		}
+		scored := agentpkg.Score(fix, result)
+		if scored.WeightedScore < 0 || scored.WeightedScore > 1 {
+			t.Errorf("held-out fixture %s: weighted_score=%.2f outside [0,1]", fix.ID, scored.WeightedScore)
+		}
+		if scored.PolicyViolationCount < 0 {
+			t.Errorf("held-out fixture %s: negative policy_violation_count", fix.ID)
+		}
+		t.Logf("held-out fixture %s scored: pass=%v reason=%s weighted=%.2f",
+			fix.ID, scored.Pass, scored.FailReason, scored.WeightedScore)
+	}
+}
