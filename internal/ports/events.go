@@ -43,7 +43,67 @@ const (
 
 	// Agent eval events (M7, ADR-067).
 	EventAgentEvalCompleted = "agent.eval.completed.v1"
+
+	// Agent lifecycle events (M7, ADR-066, ADR-068).
+	// agent.llm.call.completed.v1: emitted after each LLM call with a
+	// redacted summary (ADR-066) and correlation_id linking to OTel span.
+	EventAgentLLMCallCompleted = "agent.llm.call.completed.v1"
+	// agent.tool.invoked.v1: emitted after each tool call with a redacted
+	// summary and correlation_id.
+	EventAgentToolInvoked = "agent.tool.invoked.v1"
+	// agent.budget.exceeded.v1: emitted when a budget limit is hit (AC-8).
+	EventAgentBudgetExceeded = "agent.budget.exceeded.v1"
+	// agent.principal.authenticated.v1: emitted when an agent principal is
+	// constructed and verified (AC-1).
+	EventAgentPrincipalAuthenticated = "agent.principal.authenticated.v1"
+	// agent.injection.detected.v1: emitted when a prompt injection attempt is
+	// detected by the static template + Redactor (R-1).
+	EventAgentInjectionDetected = "agent.injection.detected.v1"
 )
+
+// --- Agent event payloads (M7) ---
+
+// AgentLLMCallPayload is the payload for agent.llm.call.completed.v1.
+// Prompt and content are redacted by the Redactor before journal entry
+// (ADR-066). The correlation_id links to the OTel span (ADR-068).
+type AgentLLMCallPayload struct {
+	Provider        string `json:"provider"`         // e.g. "openai-compatible", "memstore"
+	Model          string `json:"model"`           // model used
+	Operation      string `json:"operation"`        // e.g. "complete", "embed"
+	InputTokens    int    `json:"input_tokens"`    // usage.input_tokens
+	OutputTokens   int    `json:"output_tokens"`   // usage.output_tokens
+	LatencyMs      int64  `json:"latency_ms"`      // wall clock ms
+	RedactedPrompt string `json:"redacted_prompt"` // Redactor output, never raw
+	CorrelationID  string `json:"correlation_id"`  // links to OTel span (ADR-019)
+}
+
+// AgentToolInvokePayload is the payload for agent.tool.invoked.v1.
+type AgentToolInvokePayload struct {
+	ToolID         string `json:"tool_id"`          // Tool.ID()
+	ToolVersion    string `json:"tool_version"`     // Tool.Version()
+	RedactedArgs   string `json:"redacted_args"`    // Redacted tool arguments (ADR-066)
+	CorrelationID  string `json:"correlation_id"`   // links to OTel span
+}
+
+// AgentBudgetExceededPayload is the payload for agent.budget.exceeded.v1.
+type AgentBudgetExceededPayload struct {
+	BudgetKind string `json:"budget_kind"` // e.g. "token_cost", "wall_clock", "tool_calls"
+	Limit      string `json:"limit"`        // string representation of the limit
+	Actual     string `json:"actual"`       // string representation of actual consumption
+}
+
+// AgentPrincipalAuthenticatedPayload is the payload for agent.principal.authenticated.v1.
+type AgentPrincipalAuthenticatedPayload struct {
+	PrincipalType string `json:"principal_type"` // always "agent"
+	PrincipalID   string `json:"principal_id"`
+	FrameID      string `json:"frame_id,omitempty"`
+}
+
+// AgentInjectionDetectedPayload is the payload for agent.injection.detected.v1.
+type AgentInjectionDetectedPayload struct {
+	AttemptedContent string `json:"attempted_content"` // snippet of the injection attempt (redacted)
+	CorrelationID  string `json:"correlation_id"`
+}
 
 // Actor identifies who or what performed an action. Actor and tenant are
 // mandatory on every journal event.
