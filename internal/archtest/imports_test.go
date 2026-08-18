@@ -29,16 +29,20 @@ const moduleName = "github.com/Rubentxu/golem"
 // internal/. The blanket third-party ban below already covers them; this
 // list exists to make intent explicit and failures self-explanatory.
 var vendorDenyList = []string{
-	"github.com/nats-io",           // EventTransport (ADR-012)
-	"github.com/apache/hugegraph",  // GraphStore candidate (ADR-013)
-	"github.com/vesoft-inc",        // NebulaGraph
-	"github.com/open-policy-agent", // PolicyEvaluator (ADR-018)
-	"github.com/aws",               // ObjectStore (ADR-014)
-	"github.com/sigstore",          // Signing (ADR-025)
-	"github.com/CycloneDX",         // SBOM parser (ADR-053)
-	"github.com/in-toto",           // Attestation verifier (ADR-054)
-	"github.com/protobom",          // SBOM interoperability (ADR-055)
-	"go.etcd.io",                   // bbolt journal adapter (ADR-045/ADR-057)
+	"github.com/nats-io",              // EventTransport (ADR-012)
+	"github.com/apache/hugegraph",     // GraphStore candidate (ADR-013)
+	"github.com/vesoft-inc",           // NebulaGraph
+	"github.com/open-policy-agent",    // PolicyEvaluator (ADR-018)
+	"github.com/aws",                  // ObjectStore (ADR-014)
+	"github.com/sigstore",             // Signing (ADR-025)
+	"github.com/CycloneDX",            // SBOM parser (ADR-053)
+	"github.com/in-toto",              // Attestation verifier (ADR-054)
+	"github.com/protobom",             // SBOM interoperability (ADR-055)
+	"go.etcd.io",                      // bbolt journal adapter (ADR-045/ADR-057)
+	"sashabaranov/go-openai",          // LLM vendor SDK (ADR-047)
+	"anthropics/anthropic-sdk-go",     // LLM vendor SDK (ADR-047)
+	"google/generative-ai-go",         // LLM vendor SDK (ADR-047)
+	"openai/openai-go",                // LLM vendor SDK (ADR-047)
 }
 
 type violation struct {
