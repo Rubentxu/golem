@@ -137,6 +137,9 @@ type Server struct {
 	// Set via WithMetrics before building the handler.
 	MetricsHandler http.Handler
 
+	// OperatorAuth enforces RBAC for admin endpoints.
+	OperatorAuth *OperatorAuth
+
 	idsOnce sync.Once
 	idgen   ports.IDGenerator
 }
@@ -187,6 +190,12 @@ func (s *Server) routes() http.Handler {
 	})
 	// Deep readiness check (REQ-OPS-001)
 	mux.HandleFunc("GET /readyz", s.handleReadyz)
+	// System status (operator role required)
+	if s.OperatorAuth != nil {
+		mux.Handle("/status", s.OperatorAuth.RequireOperator(http.HandlerFunc(s.handleStatus)))
+	} else {
+		mux.HandleFunc("GET /status", s.handleStatus)
+	}
 	// Prometheus /metrics endpoint (REQ-OPS-001)
 	if s.MetricsHandler != nil {
 		mux.Handle("/metrics", s.MetricsHandler)
