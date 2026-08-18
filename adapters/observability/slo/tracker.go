@@ -75,8 +75,40 @@ func (t *Tracker) RegisterSLO(slo ports.SLO) {
 }
 
 func (t *Tracker) computeBudgetConsumed(sloName string, slo ports.SLO) float64 {
-	// Placeholder: compute error budget consumed.
-	// In a real implementation, this would analyze events within the window.
+	// Compute error budget consumed within the SLO window.
+	// Formula: budget_consumed = error_rate / error_budget
+	// error_rate = bad_events / total_events (where bad = value < target)
+	// If error_rate equals error_budget, budget_consumed = 1.0 (100%)
+	count := 0
+	total := 0
+	for _, e := range t.events {
+		if e.sloName == sloName {
+			total++
+			if e.value < slo.Target {
+				count++
+			}
+		}
+	}
+	if total == 0 || slo.ErrorBudget == 0 {
+		return 0
+	}
+	errorRate := float64(count) / float64(total)
+	return errorRate / slo.ErrorBudget
+}
+
+func (t *Tracker) computeBurnRate(sloName string, slo ports.SLO) float64 {
+	// Burn rate = error_rate / allowed_error_rate
+	// allowed_error_rate = 1 - target
+	// e.g., target=0.999 → allowed_error_rate=0.001
+	// burn_rate = 2.0 means we're burning error budget 2x faster than allowed
+	if slo.Target >= 1.0 {
+		return 0
+	}
+	allowedErrorRate := 1.0 - slo.Target
+	if allowedErrorRate == 0 {
+		return 0
+	}
+
 	count := 0
 	total := 0
 	for _, e := range t.events {
@@ -90,12 +122,8 @@ func (t *Tracker) computeBudgetConsumed(sloName string, slo ports.SLO) float64 {
 	if total == 0 {
 		return 0
 	}
-	return float64(count) / float64(total)
-}
-
-func (t *Tracker) computeBurnRate(sloName string, slo ports.SLO) float64 {
-	// Placeholder: compute burn rate.
-	return t.computeBudgetConsumed(sloName, slo)
+	errorRate := float64(count) / float64(total)
+	return errorRate / allowedErrorRate
 }
 
 // Ensure Tracker implements SLOTracker
