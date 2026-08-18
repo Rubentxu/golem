@@ -38,7 +38,11 @@ import (
 func Setup(ctx context.Context, serviceName, serviceVersion string) (ports.Observability, func(context.Context) error, error) {
 	res, err := resource.Merge(
 		resource.Default(),
-		resource.NewWithAttributes(semconv.SchemaURL,
+		// NewSchemaless avoids schema-URL conflicts: resource.Default()
+		// carries the schema URL of the SDK's bundled semconv, which may
+		// differ from the version imported here. A schemaless resource
+		// merges cleanly and inherits Default()'s schema URL.
+		resource.NewSchemaless(
 			semconv.ServiceName(serviceName),
 			semconv.ServiceVersion(serviceVersion),
 		),
