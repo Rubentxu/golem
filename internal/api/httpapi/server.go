@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Rubentxu/golem/internal/api/httpapi/admin"
 	"github.com/Rubentxu/golem/internal/application/command"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
 	"github.com/Rubentxu/golem/internal/clock"
@@ -140,6 +141,12 @@ type Server struct {
 	// OperatorAuth enforces RBAC for admin endpoints.
 	OperatorAuth *OperatorAuth
 
+	// AuditLogger emits ops.console.action events for admin endpoints.
+	AuditLogger AuditLogger
+
+	// AdminHandlers provides the /admin/* endpoints (ADR-081).
+	AdminHandlers *admin.AdminMux
+
 	idsOnce sync.Once
 	idgen   ports.IDGenerator
 }
@@ -175,6 +182,12 @@ func (s *Server) WithMetrics(handler http.Handler) *Server {
 	return s
 }
 
+// WithAuditLogger sets the audit logger for admin endpoints (REQ-OPS-003).
+func (s *Server) WithAuditLogger(l AuditLogger) *Server {
+	s.AuditLogger = l
+	return s
+}
+
 // Handler returns the routed handler wrapped with the observability
 // middleware: correlation propagation (X-Correlation-Id, generated when
 // absent), request spans and status metrics.
@@ -199,6 +212,15 @@ func (s *Server) routes() http.Handler {
 	// Prometheus /metrics endpoint (REQ-OPS-001)
 	if s.MetricsHandler != nil {
 		mux.Handle("/metrics", s.MetricsHandler)
+	}
+	// Admin endpoints (operator-only, ADR-081).
+	if s.AdminHandlers != nil {
+		adminMux := s.AdminHandlers.Handler()
+		if s.OperatorAuth != nil {
+			mux.Handle("/admin/", s.OperatorAuth.RequireOperator(adminMux))
+		} else {
+			mux.Handle("/admin/", adminMux)
+		}
 	}
 	mux.HandleFunc("POST /api/v1/work-items", s.handleCreateWorkItem)
 	mux.HandleFunc("GET /api/v1/work-items/{id}", s.handleGetWorkItem)
@@ -281,16 +303,6 @@ func (s *Server) ids() ports.IDGenerator {
 		}
 	})
 	return s.idgen
-}
-
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-}
-
-func (r *statusRecorder) WriteHeader(code int) {
-	r.status = code
-	r.ResponseWriter.WriteHeader(code)
 }
 
 // muxMatch reports the ServeMux pattern the request would match. With

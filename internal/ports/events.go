@@ -85,6 +85,12 @@ const (
 	EventSLOBudgetBurn = "slo.budget.burn.v1"
 	// slo.budget.exhausted.v1: emitted when error budget is > 90% exhausted.
 	EventSLOBudgetExhausted = "slo.budget.exhausted.v1"
+
+	// Ops console audit events (M8, ADR-081, REQ-OPS-003).
+	// ops.console.action.completed.v1: emitted after each successful admin operation.
+	EventOpsConsoleActionCompleted = "ops.console.action.completed.v1"
+	// ops.console.action.rejected.v1: emitted when an admin operation fails.
+	EventOpsConsoleActionRejected = "ops.console.action.rejected.v1"
 )
 
 // --- Agent event payloads (M7) ---
@@ -147,6 +153,17 @@ type SLOBudgetExhaustedPayload struct {
 	BudgetConsumed  float64 `json:"budget_consumed"`  // fraction 0..1
 	BudgetRemaining float64 `json:"budget_remaining"` // fraction 0..1
 	WindowHours     int     `json:"window_hours"`
+}
+
+// OpsConsoleActionPayload is the payload for ops.console.action.{completed,rejected}.v1.
+// Emitted by the audit middleware on every admin endpoint (REQ-OPS-003).
+type OpsConsoleActionPayload struct {
+	Action      string `json:"action"`            // e.g. "cell.migrate", "tenant.assign"
+	Target      string `json:"target,omitempty"`  // e.g. tenant_id or cell_id
+	Status      string `json:"status"`            // "completed" or "rejected"
+	Subject     string `json:"subject,omitempty"` // principal subject
+	Correlation string `json:"correlation_id,omitempty"`
+	Detail      string `json:"detail,omitempty"` // error message if rejected
 }
 
 // Actor identifies who or what performed an action. Actor and tenant are
