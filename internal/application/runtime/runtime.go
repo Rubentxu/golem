@@ -71,7 +71,8 @@ type Runtime struct {
 // Clock and IDs default to the reference implementations. Obs is the
 // observability bundle (zero value = no-ops). Search is optional: nil
 // disables the search tail loop (search is a derived projection,
-// ADR-015).
+// ADR-015). LLM, Policy, and Budgets are optional and set by
+// bootstrap for agentic behaviors (M7).
 type Options struct {
 	Journal    ports.JournalStore
 	Graph      ports.GraphStore
@@ -82,6 +83,12 @@ type Options struct {
 	Clock      ports.Clock
 	IDs        ports.IDGenerator
 	Obs        ports.Observability
+	// LLM is the LLM provider for agentic behaviors (M7).
+	LLM ports.LLMProvider
+	// Policy is the policy evaluator for agentic behaviors (M7).
+	Policy ports.PolicyEvaluator
+	// Budgets maps budget name to Budget for agentic behaviors (M7).
+	Budgets map[string]ports.Budget
 }
 
 // New composes a runtime. Handlers are registered on rt.Bus by the host

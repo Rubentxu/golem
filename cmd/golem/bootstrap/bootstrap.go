@@ -13,6 +13,7 @@ import (
 	graphmem "github.com/Rubentxu/golem/adapters/graph/memstore"
 	"github.com/Rubentxu/golem/adapters/journal/bbolt"
 	journalmem "github.com/Rubentxu/golem/adapters/journal/memstore"
+	llmmem "github.com/Rubentxu/golem/adapters/llm/memstore"
 	registrymem "github.com/Rubentxu/golem/adapters/registry/memstore"
 	searchmem "github.com/Rubentxu/golem/adapters/search/memstore"
 	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
@@ -96,6 +97,18 @@ func NewOptionsFromProfile(p profile.Profile, obsbundle ports.Observability) (ru
 	default:
 		return runtime.Options{}, errUnknownAdapter("search", p.Adapter("search"))
 	}
+
+	// LLM adapter (M7)
+	switch p.Adapter("llm") {
+	case "memstore", "":
+		opts.LLM = llmmem.New(nil)
+	default:
+		return runtime.Options{}, errUnknownAdapter("llm", p.Adapter("llm"))
+	}
+
+	// Policy adapter (M7) — placeholder nil until PolicyEvaluator port is defined
+	// Will be wired in T11 after PolicyEvaluator port is created
+	opts.Policy = nil
 
 	return opts, nil
 }
