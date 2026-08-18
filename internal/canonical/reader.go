@@ -236,3 +236,37 @@ func ReadManifestFromTar(tr *tar.Reader) (*Manifest, error) {
 		}
 	}
 }
+
+// ParseCanonicalNodes parses JSONL canonical nodes from raw bytes.
+func ParseCanonicalNodes(data []byte) ([]CanonicalNode, error) {
+	var result []CanonicalNode
+	lines := splitJSONLines(data)
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+		var n CanonicalNode
+		if err := json.Unmarshal(line, &n); err != nil {
+			return nil, err
+		}
+		result = append(result, n)
+	}
+	return result, nil
+}
+
+// ParseCanonicalEdges parses JSONL canonical edges from raw bytes.
+func ParseCanonicalEdges(data []byte) ([]CanonicalEdge, error) {
+	var result []CanonicalEdge
+	lines := splitJSONLines(data)
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+		var e CanonicalEdge
+		if err := json.Unmarshal(line, &e); err != nil {
+			return nil, err
+		}
+		result = append(result, e)
+	}
+	return result, nil
+}

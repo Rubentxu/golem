@@ -18,17 +18,17 @@ type Exporter struct {
 	Out      io.Writer
 }
 
-// canonicalNode is the JSON representation of a node in the canonical export.
+// CanonicalNode is the JSON representation of a node in the canonical export.
 // Uses lowercase keys per ports.GraphOp canonical data specification.
-type canonicalNode struct {
+type CanonicalNode struct {
 	ID         string         `json:"id"`
 	Kind       string         `json:"kind"`
 	Revision   uint64         `json:"revision"`
 	Attributes map[string]any `json:"attributes"`
 }
 
-// canonicalEdge is the JSON representation of an edge in the canonical export.
-type canonicalEdge struct {
+// CanonicalEdge is the JSON representation of an edge in the canonical export.
+type CanonicalEdge struct {
 	ID         string         `json:"id"`
 	Type       string         `json:"type"`
 	SourceID   string         `json:"source"`
@@ -129,14 +129,14 @@ func (e *Exporter) Export(ctx context.Context) (Manifest, error) {
 }
 
 // collectNodes enumerates all nodes for the tenant using ListNodes and converts to canonical format.
-func (e *Exporter) collectNodes(ctx context.Context) ([]canonicalNode, error) {
+func (e *Exporter) collectNodes(ctx context.Context) ([]CanonicalNode, error) {
 	nodes, err := e.Graph.ListNodes(ctx, e.TenantID)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]canonicalNode, 0, len(nodes))
+	result := make([]CanonicalNode, 0, len(nodes))
 	for _, n := range nodes {
-		result = append(result, canonicalNode{
+		result = append(result, CanonicalNode{
 			ID:         n.ID,
 			Kind:       n.Kind,
 			Revision:   uint64(n.Revision),
@@ -147,14 +147,14 @@ func (e *Exporter) collectNodes(ctx context.Context) ([]canonicalNode, error) {
 }
 
 // collectEdges enumerates all edges for the tenant using ListEdges and converts to canonical format.
-func (e *Exporter) collectEdges(ctx context.Context) ([]canonicalEdge, error) {
+func (e *Exporter) collectEdges(ctx context.Context) ([]CanonicalEdge, error) {
 	edges, err := e.Graph.ListEdges(ctx, e.TenantID)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]canonicalEdge, 0, len(edges))
+	result := make([]CanonicalEdge, 0, len(edges))
 	for _, e := range edges {
-		result = append(result, canonicalEdge{
+		result = append(result, CanonicalEdge{
 			ID:         e.ID,
 			Type:       e.Type,
 			SourceID:   e.SourceID,
