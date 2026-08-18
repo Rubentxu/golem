@@ -59,6 +59,14 @@ const (
 	// agent.injection.detected.v1: emitted when a prompt injection attempt is
 	// detected by the static template + Redactor (R-1).
 	EventAgentInjectionDetected = "agent.injection.detected.v1"
+
+	// Cell lifecycle events (M8, ADR-074, REQ-CELL-006).
+	// cell.promoted.v1: emitted when a cell becomes newly operative.
+	EventCellPromoted = "cell.promoted.v1"
+	// cell.demoted.v1: emitted when a cell is drained or taken offline.
+	EventCellDemoted = "cell.demoted.v1"
+	// cell.routing.conflict_detected.v1: emitted when a routing conflict is detected.
+	EventCellRoutingConflict = "cell.routing.conflict_detected.v1"
 )
 
 // --- Agent event payloads (M7) ---
