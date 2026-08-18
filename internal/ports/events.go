@@ -101,6 +101,29 @@ const (
 	// Audit export events (M8, ADR-078, REQ-AUDIT-005).
 	// audit.export.completed.v1: emitted after successful canonical export + S3 upload + KMS sign.
 	EventAuditExportCompleted = "audit.export.completed.v1"
+
+	// DR events (M8, ADR-079, REQ-DR-002).
+	// dr.snapshot.completed.v1: emitted after a successful backup/snapshot (RDS automated
+	// backup or S3 versioning snapshot). Payload: {snapshot_id, source, size_bytes,
+	// checksum_sha256, retention_until}.
+	EventDRSnapshotCompleted = "dr.snapshot.completed.v1"
+	// dr.restore.drill.completed.v1: emitted after the weekly CI restore drill completes
+	// successfully. Payload: {drill_id, rto_observed_ms, rpo_observed_ms, target_rto_ms,
+	// target_rpo_ms, pass}.
+	EventDRRestoreDrillCompleted = "dr.restore.drill.completed.v1"
+	// dr.restore.failed.v1: emitted when the restore drill (or a real restore) fails.
+	// Payload: {target, reason, error_class, last_snapshot_id}.
+	EventDRRestoreFailed = "dr.restore.failed.v1"
+
+	// Quota events (M8, ADR-076, REQ-QUOTA-002).
+	// quota.exceeded.v1: emitted when a per-tenant quota is exceeded (port-boundary
+	// enforcement). Payload: {quota_kind, limit, observed, frame_id, principal}.
+	EventQuotaExceeded = "quota.exceeded.v1"
+
+	// Metering events (M8, ADR-077, REQ-METER-002).
+	// metering.rollup.completed.v1: emitted after successful hourly rollup to S3.
+	// Payload: {rollup_id, period_start, period_end, event_count, sink_path, sha256}.
+	EventMeteringRollupCompleted = "metering.rollup.completed.v1"
 )
 
 // --- Agent event payloads (M7) ---
