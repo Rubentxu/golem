@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/Rubentxu/golem/internal/ports"
@@ -116,9 +117,17 @@ func (a *Adapter) Complete(ctx context.Context, req ports.LLMRequest) (ports.LLM
 }
 
 // Capabilities returns the adapter capabilities.
+// NoRetention is false by default: OpenAI-compatible providers retain prompts
+// and responses unless explicitly configured with an opt-out policy.
+// Set OPENAI_COMPAT_NO_RETENTION=true to override (e.g. for local proxies
+// with zero-retention policies).
 func (a *Adapter) Capabilities() ports.LLMProviderCapabilities {
+	noRetention := false
+	if os.Getenv("OPENAI_COMPAT_NO_RETENTION") == "true" {
+		noRetention = true
+	}
 	return ports.LLMProviderCapabilities{
-		NoRetention: true,
+		NoRetention: noRetention,
 		Region:      "remote",
 		Audit:       true,
 	}
