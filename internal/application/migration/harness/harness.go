@@ -35,6 +35,11 @@ type HarnessOptions struct {
 	SampleSeed uint64
 	// TenantID is the tenant to migrate.
 	TenantID ports.TenantID
+	// TargetMutator is an optional hook called after loading but before diffing.
+	// It enables tests to inject divergence (e.g., attribute mutations) into the
+	// target graph so that the diff step detects and rolls back.
+	// The target graph at this point is an exact copy of the source snapshot.
+	TargetMutator func(context.Context, ports.GraphStore, ports.TenantID) error
 }
 
 // DefaultHarnessOptions returns the standard options for a harness run.
@@ -224,6 +229,14 @@ func (h *Harness) stepLoading(ctx context.Context) (Step, error) {
 func (h *Harness) stepReplaying(ctx context.Context) (Step, error) {
 	// Replay journal from journal_position.head+1 and apply to target.
 	// For in-memory tests, we assume target is already seeded.
+	// Apply target mutator (if set) to inject divergence before diffing.
+	if h.Options.TargetMutator != nil {
+		if err := h.Options.TargetMutator(ctx, h.Target.Graph, h.Options.TenantID); err != nil {
+			audit := newAudit(h.Journal, h.ids, h.clk, h.ID, "memstore", "memstore")
+			audit.rolledBack(ctx, RollbackSemanticDiff, "replaying")
+			return StepRolledBack, fmt.Errorf("target mutator: %w", err)
+		}
+	}
 	return StepShadowing, nil
 }
 

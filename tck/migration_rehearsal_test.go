@@ -369,3 +369,109 @@ func TestR4StructuralDivergence(t *testing.T) {
 		}
 	})
 }
+
+// TestR4RollbackSemanticDiff verifies that the harness correctly detects
+// semantic divergence (attribute-level diff, not just structural) and rolls back.
+// The divergence is injected via TargetMutator after loading but before diffing,
+// since copyIntoTarget does a full reload that overwrites any pre-seeded target data.
+//
+// Acceptance:
+//   - harness.Run() completes (returns nil) but ends in StepRolledBack state
+//   - journal.Replay of stream harness:{id} contains migration.harness.rolled_back.v1
+//     with rollback_reason="semantic_diff" and failed_step="diffing"
+//   - runtime.Options.Graph (or equivalent wiring) still points to source
+func TestR4RollbackSemanticDiff(t *testing.T) {
+	ctx := context.Background()
+
+	orig := os.Getenv("GOLEM_MIGRATION_OBSERVE_WINDOW")
+	os.Setenv("GOLEM_MIGRATION_OBSERVE_WINDOW", "100ms")
+	defer func() { _ = os.Setenv("GOLEM_MIGRATION_OBSERVE_WINDOW", orig) }()
+
+	stack := newTestStack(t, 100*time.Millisecond)
+	tenant := ports.TenantID("test-tenant")
+	stack.opts.SampleSeed = 42
+
+	// Seed source; target will be populated identically by harness loading.
+	SeedGraph(ctx, stack.Source, tenant, 100, 200, rand.NewSource(42))
+
+	// TargetMutator: inject semantic divergence by changing a sampled node's
+	// color attribute from "blue" to "red". Node attributes are compared as JSON
+	// by nodesEqual(), so any attribute change triggers a NodeDiff.
+	// To maximize detection probability, we mutate n0 which is always in the
+	// deterministic sample (first node, deterministic RNG state).
+	stack.opts.TargetMutator = func(ctx context.Context, target ports.GraphStore, tenant ports.TenantID) error {
+		_, err := target.Apply(ctx, ports.GraphMutation{
+			TenantID: tenant,
+			Ops: []ports.GraphOp{
+				{
+					Kind:   ports.OpUpsertNode,
+					Target: "n0",
+					Data: map[string]any{
+						"kind": "test:module",
+						"attributes": map[string]any{
+							"name":        "module-0",
+							"version":     "v1.0.0",
+							"status":      "active",
+							"color":       "red", // was "blue" — semantic divergence
+							"priority":    0,
+							"weight":      0.0,
+							"description": "deterministic node 0",
+						},
+					},
+				},
+			},
+		})
+		return err
+	}
+
+	stack.buildRuntime(t)
+	h := stack.buildHarness()
+
+	// Run the harness — should detect semantic diff and roll back.
+	if err := h.Run(ctx); err != nil {
+		t.Fatalf("harness.Run error = %v (rollback should not return error, just terminal state)", err)
+	}
+
+	// Verify rollback event was emitted with correct reason and step.
+	events, err := readHarnessEvents(ctx, stack.Journal, h.ID)
+	if err != nil {
+		t.Fatalf("readHarnessEvents error = %v", err)
+	}
+
+	rolledBackSeen := false
+	for _, e := range events {
+		if e.EventType == ports.EventMigrationHarnessRolledBack {
+			rolledBackSeen = true
+			payload := auditPayload(t, e)
+			if payload["rollback_reason"] != "semantic_diff" {
+				t.Errorf("rollback_reason = %q, want %q", payload["rollback_reason"], "semantic_diff")
+			}
+			if payload["failed_step"] != "diffing" {
+				t.Errorf("failed_step = %q, want %q", payload["failed_step"], "diffing")
+			}
+		}
+	}
+	if !rolledBackSeen {
+		t.Fatal("migration.harness.rolled_back.v1 event not found in journal")
+	}
+
+	// Verify NO cutover event was emitted (rollback prevents cutover).
+	for _, e := range events {
+		if e.EventType == ports.EventMigrationHarnessCutover {
+			t.Error("cutover event should NOT be emitted on rollback")
+		}
+	}
+
+	// Verify NO completed event was emitted.
+	for _, e := range events {
+		if e.EventType == ports.EventMigrationHarnessCompleted {
+			t.Error("completed event should NOT be emitted on rollback")
+		}
+	}
+
+	// Verify runtime graph still points to source (not swapped).
+	// Since rollback happens before cutover, SwapGraph is never called.
+	if stack.Runtime.Graph != stack.Source {
+		t.Errorf("runtime.Graph = %p, want source %p after rollback", stack.Runtime.Graph, stack.Source)
+	}
+}
