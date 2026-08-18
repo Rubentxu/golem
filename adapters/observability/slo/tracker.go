@@ -9,11 +9,31 @@ import (
 	"github.com/Rubentxu/golem/internal/ports"
 )
 
+// BurnRateAlert represents a burn rate alert (>2x threshold).
+type BurnRateAlert struct {
+	SLOName     string
+	BurnRate    float64
+	WindowHours int
+	BudgetLeft  float64
+	ErrorRate   float64
+	AllowedRate float64
+}
+
+// ExhaustedAlert represents an exhausted budget alert (>90% consumed).
+type ExhaustedAlert struct {
+	SLOName         string
+	BudgetConsumed  float64
+	BudgetRemaining float64
+	WindowHours     int
+}
+
 // Tracker implements ports.SLOTracker with in-memory tracking.
 type Tracker struct {
-	slos   map[string]ports.SLO
-	events []sloEvent
-	mu     sync.RWMutex
+	slos            map[string]ports.SLO
+	events          []sloEvent
+	mu              sync.RWMutex
+	burnRateAlerts  []BurnRateAlert
+	exhaustedAlerts []ExhaustedAlert
 }
 
 type sloEvent struct {
@@ -48,13 +68,39 @@ func (t *Tracker) Evaluate(ctx context.Context) ([]ports.SLOViolation, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	t.burnRateAlerts = nil
+	t.exhaustedAlerts = nil
 	violations := make([]ports.SLOViolation, 0)
 
 	for name, slo := range t.slos {
 		budgetConsumed := t.computeBudgetConsumed(name, slo)
 		burnRate := t.computeBurnRate(name, slo)
+		allowedErrorRate := 1.0 - slo.Target
+		budgetRemaining := 1.0 - budgetConsumed
 
-		if budgetConsumed >= slo.ErrorBudget {
+		// Check burn rate > 2x threshold (ADR-080 §3)
+		if burnRate > 2.0 {
+			t.burnRateAlerts = append(t.burnRateAlerts, BurnRateAlert{
+				SLOName:     name,
+				BurnRate:    burnRate,
+				WindowHours: slo.WindowHours,
+				BudgetLeft:  budgetRemaining,
+				ErrorRate:   burnRate * allowedErrorRate,
+				AllowedRate: allowedErrorRate,
+			})
+		}
+
+		// Check budget exhausted > 90% (ADR-080 §3)
+		if budgetConsumed > 0.9 {
+			t.exhaustedAlerts = append(t.exhaustedAlerts, ExhaustedAlert{
+				SLOName:         name,
+				BudgetConsumed:  budgetConsumed,
+				BudgetRemaining: budgetRemaining,
+				WindowHours:     slo.WindowHours,
+			})
+		}
+
+		if budgetConsumed >= 1.0 {
 			violations = append(violations, ports.SLOViolation{
 				SLOName:        name,
 				BudgetConsumed: budgetConsumed,
@@ -64,6 +110,20 @@ func (t *Tracker) Evaluate(ctx context.Context) ([]ports.SLOViolation, error) {
 	}
 
 	return violations, nil
+}
+
+// BurnRateAlerts returns burn rate alerts from the last Evaluate call.
+func (t *Tracker) BurnRateAlerts() []BurnRateAlert {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.burnRateAlerts
+}
+
+// ExhaustedAlerts returns exhausted budget alerts from the last Evaluate call.
+func (t *Tracker) ExhaustedAlerts() []ExhaustedAlert {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.exhaustedAlerts
 }
 
 // RegisterSLO registers an SLO for tracking.

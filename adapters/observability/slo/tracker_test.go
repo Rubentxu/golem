@@ -94,23 +94,78 @@ func TestSLO_TracksErrorBudget(t *testing.T) {
 
 // TestSLO_SlidingWindow verifies that only events within the window are
 // considered for budget computation (REQ-SLO-002).
-// RED test: fails because the tracker does not implement sliding window.
+// Currently a placeholder - sliding window filtering will be added.
 func TestSLO_SlidingWindow(t *testing.T) {
-	t.Skip("RED test: sliding window not yet implemented")
+	t.Skip("Sliding window: events are filtered by time window; not yet implemented")
 }
 
 // TestSLO_FiresAlertOn2xBurnRate verifies that a burn rate > 2x triggers
-// an alert event (REQ-SLO-003, AC-15).
-// RED test: fails because burn rate alerting is not yet implemented.
+// a burn rate alert (REQ-SLO-003, AC-15).
 func TestSLO_FiresAlertOn2xBurnRate(t *testing.T) {
-	t.Skip("RED test: burn rate alerting not yet implemented")
+	t.Parallel()
+	ctx := context.Background()
+
+	tracker := NewTracker()
+	tracker.RegisterSLO(ports.SLO{
+		Name:        "latency",
+		Target:      0.999, // allowed error rate = 0.001
+		WindowHours: 1,
+		ErrorBudget: 0.001,
+	})
+
+	// Create 3x burn rate scenario:
+	// 3 bad out of 1000 = 0.3% error rate
+	// allowed = 0.1% error rate
+	// burn_rate = 0.3% / 0.1% = 3.0 > 2.0 → alert
+	for i := 0; i < 997; i++ {
+		_ = tracker.Record(ctx, "latency", 1.0)
+	}
+	_ = tracker.Record(ctx, "latency", 0.0)
+	_ = tracker.Record(ctx, "latency", 0.0)
+	_ = tracker.Record(ctx, "latency", 0.0)
+
+	_, _ = tracker.Evaluate(ctx)
+
+	alerts := tracker.BurnRateAlerts()
+	if len(alerts) == 0 {
+		t.Fatal("expected burn rate alert at 3x burn rate, got none")
+	}
+
+	if alerts[0].BurnRate < 2.0 {
+		t.Errorf("expected burn rate > 2.0, got %f", alerts[0].BurnRate)
+	}
 }
 
 // TestSLO_BudgetExhausted verifies that budget exhaustion > 90% triggers
-// an exhausted event (REQ-SLO-003).
-// RED test: fails because exhausted alerting is not yet implemented.
+// an exhausted alert (REQ-SLO-003).
 func TestSLO_BudgetExhausted(t *testing.T) {
-	t.Skip("RED test: exhausted alerting not yet implemented")
+	t.Parallel()
+	ctx := context.Background()
+
+	tracker := NewTracker()
+	tracker.RegisterSLO(ports.SLO{
+		Name:        "error_rate",
+		Target:      0.99, // allowed error rate = 0.01
+		WindowHours: 1,
+		ErrorBudget: 0.01, // 1% budget
+	})
+
+	// 91% error rate = budget consumed = 0.91 / 0.01 = 91x > 90% threshold
+	for i := 0; i < 9; i++ {
+		_ = tracker.Record(ctx, "error_rate", 1.0) // good
+	}
+	_ = tracker.Record(ctx, "error_rate", 0.0) // 1 bad out of 10 = 10% error rate
+
+	_, _ = tracker.Evaluate(ctx)
+
+	alerts := tracker.ExhaustedAlerts()
+	if len(alerts) == 0 {
+		t.Fatal("expected exhausted alert at >90% budget consumed, got none")
+	}
+
+	if alerts[0].BudgetConsumed < 0.9 {
+		t.Errorf("expected BudgetConsumed >= 0.9, got %f", alerts[0].BudgetConsumed)
+	}
 }
 
 // TestSLO_BudgetConsumedPercent verifies budget consumption is expressed
