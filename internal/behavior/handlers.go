@@ -15,16 +15,20 @@ const EventBehaviorFound = "behavior.cve_gate.found.v1"
 const EventBehaviorMitigation = "behavior.cve_gate.mitigation_suggested.v1"
 
 // vulnerabilityFromLens scans the lens result for Vulnerability nodes.
+// The CVE label comes from the attributes when present; otherwise the
+// node ID carries it (the M4 projector stores vuln identity in the node
+// ID "vuln-<cve>" and keeps severity/status/provider as attributes).
 func vulnerabilityFromLens(in HandlerInput) ([]string, error) {
 	var cves []string
 	for _, n := range in.LensResult.Nodes {
 		if n.Kind != "Vulnerability" {
 			continue
 		}
-		cve, _ := n.Attributes["cve"].(string)
-		if cve != "" {
+		if cve, ok := n.Attributes["cve"].(string); ok && cve != "" {
 			cves = append(cves, cve)
+			continue
 		}
+		cves = append(cves, "id:"+n.ID)
 	}
 	return cves, nil
 }

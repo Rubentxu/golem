@@ -32,7 +32,7 @@ const (
 	// (M6). Payload: {scenario_id, base_position, events_applied,
 	// promoted_by}. Emitted on stream "scenario.{id}" after the overlay
 	// batch has been appended atomically.
-	EventScenarioPromoted = "scenario.promoted.v1"
+	EventScenarioPromoted = "scenario.delta.promoted.v1"
 )
 
 // Actor identifies who or what performed an action. Actor and tenant are

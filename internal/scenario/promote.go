@@ -18,7 +18,7 @@ type PromoteResult struct {
 
 // Promote verifies lineage, requires approval, then appends the overlay
 // batch to the real journal atomically (one Append call — the port's
-// atomicity contract) and emits scenario.promoted.v1 on stream
+// atomicity contract) and emits scenario.delta.promoted.v1 on stream
 // scenario.{id}.
 //
 // Lineage: base_position must be ≤ the current journal head. Forking from
