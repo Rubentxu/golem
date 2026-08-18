@@ -79,16 +79,9 @@ func uatAgentHandler(llm ports.LLMProvider, redact *observability.Redactor) beha
 			return behavior.HandlerOutput{}, fmt.Errorf("UAT agent: unmarshal payload: %w", err)
 		}
 
-		// Build lens spec with roots from event
-		lensSpec := lens.RequirementTraceLens(
-			[]string{payload.RequirementID},
-			5,    // max depth
-			500,  // max nodes
-			1000, // max edges
-		)
-		_ = lensSpec // lens execution happens in behavior pipeline
-
-		// Render static prompt with structured lens context
+		// Render static prompt with structured lens context.
+		// Note: agent should prefer agentCtx.LensResult for richer context
+		// (lens executes in pipeline.go before this handler is called).
 		promptBody := fmt.Sprintf(uatPromptTemplate, renderRequirementContext(payload.RequirementID, payload.Title))
 
 		// Redact prompt before LLM call (PII detection per ADR-066)

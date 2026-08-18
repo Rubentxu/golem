@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/Rubentxu/golem/internal/agent/observability"
+	"github.com/Rubentxu/golem/internal/lens"
 	"github.com/Rubentxu/golem/internal/ports"
 )
 
@@ -44,6 +45,10 @@ type AgenticContext struct {
 	IDGenerator ports.IDGenerator
 	// TenantID is the tenant scope for this run.
 	TenantID ports.TenantID
+	// LensResult is the result of lens.Execute (spec from behavior.LensSpec).
+	// Populated by the pipeline BEFORE the AgenticHandler is called.
+	// Agents can use this for context-aware prompting.
+	LensResult *lens.Result
 }
 
 // AgenticHandler is the handler signature for agentic behaviors.

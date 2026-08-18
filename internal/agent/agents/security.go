@@ -80,19 +80,11 @@ func securityAgentHandler(llm ports.LLMProvider, redact *observability.Redactor)
 			return behavior.HandlerOutput{}, fmt.Errorf("security agent: unmarshal payload: %w", err)
 		}
 
-		// Build lens spec with roots from event
-		// The lens will traverse: Component → SBOM → Artifact → Release
-		// to find all affected releases
-		lensSpec := lens.VulnerabilityImpactLens(
-			[]string{payload.PURL},
-			5,    // max depth
-			500,  // max nodes
-			1000, // max edges
-		)
-		_ = lensSpec // lens execution happens in behavior pipeline
-
-		// Render static prompt with structured lens context
-		// The lens result (nodes/edges) is injected as JSON - never user data
+		// Render static prompt with structured lens context.
+		// Note: agent should prefer agentCtx.LensResult for richer context
+		// (lens executes in pipeline.go before this handler is called).
+		// The lens traverses: Component → SBOM → Artifact → Release
+		// to find all affected releases.
 		promptBody := fmt.Sprintf(securityPromptTemplate, renderVulnerabilityContext(payload.CVEID, payload.PURL))
 
 		// Redact prompt before LLM call (PII detection per ADR-066)

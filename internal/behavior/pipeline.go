@@ -107,35 +107,10 @@ func (e *Engine) Handle(ctx context.Context, event ports.RawEvent) ([]Outcome, e
 
 		in := HandlerInput{Event: event, Clock: e.clock, IDs: run}
 
-		// Dispatch based on behavior Kind (D10).
-		if b.IsAgentic() {
-			// Agentic behavior: use AgenticHandler with AgenticContext.
-			ah := b.AgenticHandler()
-			if ah == nil {
-				return nil, fmt.Errorf("%w: agentic handler nil for %s@%s", ErrNoHandler, b.ID, b.Version)
-			}
-			if e.agenticCtx == nil {
-				return nil, fmt.Errorf("agentic behavior %s@%s requires agentic context (call NewEngineWithAgentic)", b.ID, b.Version)
-			}
-			// Inject agentic context with run-specific tenant.
-			agentCtx := *e.agenticCtx // copy
-			agentCtx.TenantID = ports.TenantID(event.TenantID)
-			agentCtx.IDGenerator = run
-			in.Agentic = &agentCtx
-			out, err := ah(ctx, event, &agentCtx)
-			if err != nil {
-				return nil, fmt.Errorf("behavior %s@%s agentic handler: %w", b.ID, b.Version, err)
-			}
-			sort.Slice(out.Events, func(i, j int) bool { return out.Events[i].EventID < out.Events[j].EventID })
-			oc.Output = out
-			outcomes = append(outcomes, oc)
-			continue
-		}
-
-		// v1 behavior.
-		if b.Handler == nil {
-			return nil, fmt.Errorf("%w: %s@%s", ErrNoHandler, b.ID, b.Version)
-		}
+		// Execute LensSpec for ALL behaviors (both Agentic and Deterministic)
+		// BEFORE the kind dispatch. This fixes C5: Agentic behaviors were
+		// skipping lens execution entirely.
+		var lensResult *lens.Result
 		if b.LensSpec != nil {
 			tenant := ports.TenantID(event.TenantID)
 			spec := *b.LensSpec
@@ -161,7 +136,41 @@ func (e *Engine) Handle(ctx context.Context, event ports.RawEvent) ([]Outcome, e
 				}
 				return nil, fmt.Errorf("behavior %s lens: %w", b.ID, err)
 			}
-			in.LensResult = *res
+			lensResult = res
+		}
+
+		// Dispatch based on behavior Kind (D10).
+		if b.IsAgentic() {
+			// Agentic behavior: use AgenticHandler with AgenticContext.
+			ah := b.AgenticHandler()
+			if ah == nil {
+				return nil, fmt.Errorf("%w: agentic handler nil for %s@%s", ErrNoHandler, b.ID, b.Version)
+			}
+			if e.agenticCtx == nil {
+				return nil, fmt.Errorf("agentic behavior %s@%s requires agentic context (call NewEngineWithAgentic)", b.ID, b.Version)
+			}
+			// Inject agentic context with run-specific tenant.
+			agentCtx := *e.agenticCtx // copy
+			agentCtx.TenantID = ports.TenantID(event.TenantID)
+			agentCtx.IDGenerator = run
+			agentCtx.LensResult = lensResult // C5: lens result now available to agentic handler
+			in.Agentic = &agentCtx
+			out, err := ah(ctx, event, &agentCtx)
+			if err != nil {
+				return nil, fmt.Errorf("behavior %s@%s agentic handler: %w", b.ID, b.Version, err)
+			}
+			sort.Slice(out.Events, func(i, j int) bool { return out.Events[i].EventID < out.Events[j].EventID })
+			oc.Output = out
+			outcomes = append(outcomes, oc)
+			continue
+		}
+
+		// v1 behavior.
+		if b.Handler == nil {
+			return nil, fmt.Errorf("%w: %s@%s", ErrNoHandler, b.ID, b.Version)
+		}
+		if lensResult != nil {
+			in.LensResult = *lensResult
 		}
 
 		out, err := b.Handler(ctx, in)
