@@ -16,7 +16,7 @@ func TestFrame_Validate_CatalogClosed(t *testing.T) {
 		ID:          "f-001",
 		TenantID:    "t-test",
 		Goal:        "Test goal",
-		Permissions: []string{"graph.read", "graph.read:lens"},
+		Permissions: []ports.Permission{ports.PermissionGraphRead, ports.PermissionGraphReadLens},
 	}
 	if err := validFrame.Validate(); err != nil {
 		t.Errorf("expected valid frame, got error: %v", err)
@@ -26,7 +26,7 @@ func TestFrame_Validate_CatalogClosed(t *testing.T) {
 	invalidFrame := ports.Frame{
 		ID:          "f-002",
 		TenantID:    "t-test",
-		Permissions: []string{"read", "write"},
+		Permissions: []ports.Permission{"read", "write"},
 	}
 	if err := invalidFrame.Validate(); err == nil {
 		t.Error("expected error for invalid permission")

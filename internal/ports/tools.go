@@ -13,20 +13,10 @@ var (
 	ErrToolInvokeFailed = errors.New("ports: tool invocation failed")
 )
 
-// Permission catalog constants (ADR-058, closed catalog v2).
-// These are the ONLY permissions available in the system.
-const (
-	PermissionRead    = "read"    // Read access to resources
-	PermissionWrite   = "write"   // Write access to resources
-	PermissionDelete  = "delete"  // Delete access to resources
-	PermissionExecute = "execute" // Execute access to resources
-	PermissionAdmin   = "admin"   // Administrative access
-)
-
 // ToolSpec describes a tool's interface (ADR-062).
 type ToolSpec struct {
 	Name        string          `json:"name"`
-	Permissions []string        `json:"permissions"` // subset of Permission catalog
+	Permissions []Permission    `json:"permissions"` // subset of closed Permission catalog
 	Description string          `json:"description,omitempty"`
 	InputSchema ToolInputSchema `json:"input_schema"`
 }

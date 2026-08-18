@@ -12,16 +12,16 @@ import (
 // result in ErrUnknownPermission.
 func TestTool_CatalogClosed(t *testing.T) {
 	// The permission catalog is closed - only defined constants are valid
-	validPerms := []string{
-		ports.PermissionRead,
-		ports.PermissionWrite,
-		ports.PermissionDelete,
-		ports.PermissionExecute,
-		ports.PermissionAdmin,
+	validPerms := []ports.Permission{
+		ports.PermissionGraphRead,
+		ports.PermissionGraphReadLens,
+		ports.PermissionProposalWrite,
+		ports.PermissionProposalApply,
+		ports.PermissionEvidenceWrite,
 	}
 
 	// Verify all permission constants are unique
-	permSet := make(map[string]bool)
+	permSet := make(map[ports.Permission]bool)
 	for _, p := range validPerms {
 		if permSet[p] {
 			t.Errorf("duplicate permission: %s", p)
@@ -30,7 +30,7 @@ func TestTool_CatalogClosed(t *testing.T) {
 	}
 
 	// Invalid permission should be detected
-	invalidPerm := "invalid-permission"
+	invalidPerm := ports.Permission("invalid-permission")
 	for _, p := range validPerms {
 		if p == invalidPerm {
 			t.Errorf("invalid permission should not match valid: %s", invalidPerm)
@@ -79,7 +79,7 @@ func TestTool_VendorSDKNotImported(t *testing.T) {
 	// This test validates the port types exist without vendor dependencies
 	spec := ports.ToolSpec{
 		Name:        "test-tool",
-		Permissions: []string{ports.PermissionRead},
+		Permissions: []ports.Permission{ports.PermissionGraphRead},
 		Description: "test tool",
 	}
 	if spec.Name != "test-tool" {
@@ -101,7 +101,7 @@ func (noopTool) Invoke(ctx context.Context, input ports.ToolInput) (ports.ToolOu
 func (noopTool) Spec() ports.ToolSpec {
 	return ports.ToolSpec{
 		Name:        "noop",
-		Permissions: []string{ports.PermissionRead},
+		Permissions: []ports.Permission{ports.PermissionGraphRead},
 		Description: "noop tool",
 	}
 }
