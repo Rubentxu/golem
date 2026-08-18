@@ -8,6 +8,7 @@ import (
 
 	"github.com/Rubentxu/golem/adapters/graph/memstore"
 	"github.com/Rubentxu/golem/internal/application/runtime"
+	"github.com/Rubentxu/golem/internal/ports"
 )
 
 // TestRuntimeSwapGraphAtomicity verifies that SwapGraph uses a write lock
@@ -43,9 +44,11 @@ func TestRuntimeSwapGraphAtomicity(t *testing.T) {
 				default:
 					// Hold RLock to read — mimics how the tail loop reads Graph
 					// during ProjectBatch.
-					unlock := rt.AcquireReadLock()
-					g := rt.Graph
-					unlock()
+					var g ports.GraphStore
+					rt.WithGraphRLock(context.Background(), func() error {
+						g = rt.Graph
+						return nil
+					})
 					if g == oldGraph {
 						select {
 						case seenOld <- struct{}{}:
@@ -96,9 +99,11 @@ done:
 	readersMu.Wait()
 
 	// After swap, reading Graph() should return newGraph.
-	unlock := rt.AcquireReadLock()
-	g := rt.Graph
-	unlock()
+	var g ports.GraphStore
+	rt.WithGraphRLock(context.Background(), func() error {
+		g = rt.Graph
+		return nil
+	})
 	if g != newGraph {
 		t.Errorf("after SwapGraph, rt.Graph = %v, want %v", g, newGraph)
 	}
@@ -148,10 +153,11 @@ func TestRuntimeSwapGraphReadThenWrite(t *testing.T) {
 	// Reader holds RLock briefly, then releases.
 	go func() {
 		started.Done()
-		unlock := rt.AcquireReadLock()
-		close(swapStarted) // signal that RLock is held
-		time.Sleep(20 * time.Millisecond)
-		unlock()
+		rt.WithGraphRLock(context.Background(), func() error {
+			close(swapStarted) // signal that RLock is held
+			time.Sleep(20 * time.Millisecond)
+			return nil
+		})
 	}()
 
 	// Writer waits for reader to hold lock, then tries SwapGraph.
@@ -170,9 +176,11 @@ func TestRuntimeSwapGraphReadThenWrite(t *testing.T) {
 
 	// After writer completes, Graph must be newGraph.
 	<-writerDone
-	unlock := rt.AcquireReadLock()
-	g := rt.Graph
-	unlock()
+	var g ports.GraphStore
+	rt.WithGraphRLock(context.Background(), func() error {
+		g = rt.Graph
+		return nil
+	})
 	if g != newGraph {
 		t.Errorf("Graph = %v, want %v", g, newGraph)
 	}

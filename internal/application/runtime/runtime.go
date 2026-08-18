@@ -131,13 +131,13 @@ func (rt *Runtime) SwapGraph(ctx context.Context, newGraph ports.GraphStore) err
 	return nil
 }
 
-// AcquireReadLock acquires the graph read lock and returns a function to release it.
-// Callers MUST invoke the returned release function exactly once.
-// This is used by the swap-atomicity test in tck/ to verify that concurrent
-// readers during SwapGraph see either the old or new graph, never a partial state.
-func (rt *Runtime) AcquireReadLock() (release func()) {
+// WithGraphRLock acquires the graph read lock for the duration of fn.
+// It returns the error returned by fn, or nil if fn succeeds.
+// The lock is always released, even if fn returns an error.
+func (rt *Runtime) WithGraphRLock(ctx context.Context, fn func() error) error {
 	rt.graphMu.RLock()
-	return rt.graphMu.RUnlock
+	defer rt.graphMu.RUnlock()
+	return fn()
 }
 
 // ProjectBatch tails the journal into the graph projection once.
