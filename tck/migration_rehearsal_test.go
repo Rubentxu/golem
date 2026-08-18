@@ -568,6 +568,72 @@ func TestR4ObserveWindowRollback(t *testing.T) {
 	}
 }
 
+// TestStepReplayingProjectorApplied verifies that stepReplaying handles an
+// extension.pack.activated.v1 event without error via the wired projector
+// (DEFER-M5.1-6 closed in commit 8a8e7e8 with projection.Projector{} +
+// ApplyIfHandled wired in harness.go:249).
+func TestStepReplayingProjectorApplied(t *testing.T) {
+	ctx := context.Background()
+
+	orig := os.Getenv("GOLEM_MIGRATION_OBSERVE_WINDOW")
+	os.Setenv("GOLEM_MIGRATION_OBSERVE_WINDOW", "100ms")
+	defer func() { _ = os.Setenv("GOLEM_MIGRATION_OBSERVE_WINDOW", orig) }()
+
+	stack := newTestStack(t, 100*time.Millisecond)
+	tenant := ports.TenantID("test-tenant")
+	stack.opts.SampleSeed = 42
+
+	// Seed source with minimal graph.
+	SeedGraph(ctx, stack.Source, tenant, 5, 5, rand.NewSource(42))
+
+	// Pre-populate the source journal with extension.pack.activated.v1.
+	// When stepReplaying runs it will call projector.ApplyIfHandled for each
+	// event. The projector has no explicit handler for extension.pack.* so
+	// it returns (false, nil) — the event is skipped gracefully.
+	packEventPayload, _ := json.Marshal(map[string]any{
+		"name":                  "test-pack",
+		"version":               "0.1.0",
+		"integrity_digest":      "abc123def456",
+		"capabilities_required":  []string{"graph.lens:read"},
+		"permissions":          []string{"graph.lens:read"},
+	})
+	packEvent := ports.RawEvent{
+		EventID:      "evt-pack-activated-001",
+		EventType:    "extension.pack.activated.v1",
+		StreamID:     "extension.pack." + string(tenant) + ".test-pack",
+		TenantID:     string(tenant),
+		SchemaVersion: 1,
+		OccurredAt:   time.Now(),
+		Actor:        ports.Actor{Type: "service", ID: "pack-activator"},
+		Payload:      packEventPayload,
+	}
+	if _, err := stack.Journal.Append(ctx, []ports.RawEvent{packEvent}); err != nil {
+		t.Fatalf("journal Append: %v", err)
+	}
+
+	stack.buildRuntime(t)
+	h := stack.buildHarness()
+
+	// h.Run() executes all steps including stepReplaying.
+	// The presence of extension.pack.activated.v1 in the journal must not
+	// cause an error — projector.ApplyIfHandled handles unknown event types
+	// gracefully (returns false, nil).
+	if err := h.Run(ctx); err != nil {
+		t.Fatalf("harness.Run with extension.pack.activated.v1 in journal: %v", err)
+	}
+
+	// Verify the harness completed successfully (not rolled back).
+	events, err := readHarnessEvents(ctx, stack.Journal, h.ID)
+	if err != nil {
+		t.Fatalf("readHarnessEvents: %v", err)
+	}
+	for _, e := range events {
+		if e.EventType == ports.EventMigrationHarnessRolledBack {
+			t.Fatalf("harness should not have rolled back; got event: %+v", e)
+		}
+	}
+}
+
 // TestR4TargetTCKFailed (S20) verifies that when the TargetValidator (TCK)
 // fails, the harness rolls back with rollback_reason="target_tck_failed" and
 // failed_step="replaying".
