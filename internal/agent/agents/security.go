@@ -85,8 +85,8 @@ func securityAgentHandler(llm ports.LLMProvider, redact *observability.Redactor)
 		// to find all affected releases
 		lensSpec := lens.VulnerabilityImpactLens(
 			[]string{payload.PURL},
-			5,  // max depth
-			500, // max nodes
+			5,    // max depth
+			500,  // max nodes
 			1000, // max edges
 		)
 		_ = lensSpec // lens execution happens in behavior pipeline

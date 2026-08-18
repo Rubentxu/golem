@@ -82,8 +82,8 @@ func releaseAgentHandler(llm ports.LLMProvider, redact *observability.Redactor) 
 		// Build lens spec with roots from event
 		lensSpec := lens.ReleaseEvidenceLens(
 			[]string{payload.ReleaseID},
-			5,  // max depth
-			500, // max nodes
+			5,    // max depth
+			500,  // max nodes
 			1000, // max edges
 		)
 		_ = lensSpec // lens execution happens in behavior pipeline

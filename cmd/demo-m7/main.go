@@ -2,17 +2,18 @@
 //
 // This demo reproduces the full agentic flow end-to-end:
 //
-//	1. Ingest SBOM with CVE vulnerability
-//	2. Security agent proposes VEX "fixed"
-//	3. Human approval
-//	4. Proposal applied → graph mutation
-//	5. Release agent evaluates release readiness
-//	6. Release agent proposes approval
-//	7. Policy gate allows (no human approval needed for release)
-//	8. Proposal applied
-//	9. AgentEval event emitted
+//  1. Ingest SBOM with CVE vulnerability
+//  2. Security agent proposes VEX "fixed"
+//  3. Human approval
+//  4. Proposal applied → graph mutation
+//  5. Release agent evaluates release readiness
+//  6. Release agent proposes approval
+//  7. Policy gate allows (no human approval needed for release)
+//  8. Proposal applied
+//  9. AgentEval event emitted
 //
 // Run with:
+//
 //	go run ./cmd/demo-m7
 package main
 
@@ -206,9 +207,9 @@ func executeSecurityAgent(
 				Payload: mustMarshal(map[string]any{
 					"provider":        "memstore",
 					"model":           "golem-security-v1",
-					"operation":        "security-analyze",
+					"operation":       "security-analyze",
 					"redacted_prompt": "[REDACTED]",
-					"correlation_id":   idGen.NewID(),
+					"correlation_id":  idGen.NewID(),
 				}),
 			},
 		},
@@ -249,9 +250,9 @@ func executeReleaseAgent(
 				Payload: mustMarshal(map[string]any{
 					"provider":        "memstore",
 					"model":           "golem-release-v1",
-					"operation":        "release-evaluate",
+					"operation":       "release-evaluate",
 					"redacted_prompt": "[REDACTED]",
-					"correlation_id":   idGen.NewID(),
+					"correlation_id":  idGen.NewID(),
 				}),
 			},
 		},

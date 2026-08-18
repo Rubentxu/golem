@@ -82,8 +82,8 @@ func uatAgentHandler(llm ports.LLMProvider, redact *observability.Redactor) beha
 		// Build lens spec with roots from event
 		lensSpec := lens.RequirementTraceLens(
 			[]string{payload.RequirementID},
-			5,  // max depth
-			500, // max nodes
+			5,    // max depth
+			500,  // max nodes
 			1000, // max edges
 		)
 		_ = lensSpec // lens execution happens in behavior pipeline

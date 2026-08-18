@@ -52,10 +52,10 @@ func TestProposal_ConcurrentApply_Race(t *testing.T) {
 
 	t.Run("optimistic revision conflict detection", func(t *testing.T) {
 		const (
-			targetID    = "node-test"
-			tenantID    = "t-test"
-			winnerRev   = uint64(1)
-			loserRev    = uint64(0)
+			targetID  = "node-test"
+			tenantID  = "t-test"
+			winnerRev = uint64(1)
+			loserRev  = uint64(0)
 		)
 
 		// Simulate conflict detection
@@ -84,9 +84,9 @@ func TestBudget_ExhaustedDuringConcurrentRun(t *testing.T) {
 
 	t.Run("budget exceeded after 5 deductions", func(t *testing.T) {
 		const (
-			tokenBudget  = 500
+			tokenBudget = 500
 			deduction   = 100
-			 goroutines = 10
+			goroutines  = 10
 		)
 
 		var mu sync.Mutex
