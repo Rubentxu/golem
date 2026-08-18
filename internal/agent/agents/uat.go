@@ -84,9 +84,9 @@ func uatAgentHandler(llm ports.LLMProvider, redact *observability.Redactor) beha
 		// (lens executes in pipeline.go before this handler is called).
 		promptBody := fmt.Sprintf(uatPromptTemplate, renderRequirementContext(payload.RequirementID, payload.Title))
 
-		// Redact prompt before LLM call (PII detection per ADR-066)
+		// Redact prompt before LLM call (PII detection per ADR-066).
+		// redacted.Summary (not empty redact.Redact("")) is passed to the journal.
 		redacted := redact.Redact(promptBody)
-		_ = redacted // summary goes to journal event
 
 		// Call LLM
 		resp, err := llm.Complete(ctx, ports.LLMRequest{
@@ -114,7 +114,7 @@ func uatAgentHandler(llm ports.LLMProvider, redact *observability.Redactor) beha
 				},
 			},
 			Events: []ports.RawEvent{
-				makeUATAgentLLMCallEvent(agent, resp, "uat-generate", redact),
+				makeUATAgentLLMCallEvent(agent, resp, "uat-generate", redacted.Summary),
 			},
 		}, nil
 	}
@@ -138,7 +138,7 @@ func parseUATProposal(content string) ([]ports.Operation, error) {
 }
 
 // makeUATAgentLLMCallEvent creates a journal event for a UAT agent LLM call.
-func makeUATAgentLLMCallEvent(agent *behavior.AgenticContext, resp ports.LLMResponse, operation string, redact *observability.Redactor) ports.RawEvent {
+func makeUATAgentLLMCallEvent(agent *behavior.AgenticContext, resp ports.LLMResponse, operation string, redactedSummary string) ports.RawEvent {
 	tenantID := string(agent.TenantID)
 	correlationID := agent.IDGenerator.NewID()
 
@@ -148,7 +148,7 @@ func makeUATAgentLLMCallEvent(agent *behavior.AgenticContext, resp ports.LLMResp
 		Operation:      operation,
 		InputTokens:    resp.TokenUsed / 2,
 		OutputTokens:   resp.TokenUsed / 2,
-		RedactedPrompt: redact.Redact("").Summary,
+		RedactedPrompt: redactedSummary, // real redaction of promptBody
 		CorrelationID:  correlationID,
 	}
 

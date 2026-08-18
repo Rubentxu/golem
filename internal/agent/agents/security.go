@@ -87,9 +87,9 @@ func securityAgentHandler(llm ports.LLMProvider, redact *observability.Redactor)
 		// to find all affected releases.
 		promptBody := fmt.Sprintf(securityPromptTemplate, renderVulnerabilityContext(payload.CVEID, payload.PURL))
 
-		// Redact prompt before LLM call (PII detection per ADR-066)
+		// Redact prompt before LLM call (PII detection per ADR-066).
+		// redacted.Summary (not empty redact.Redact("")) is passed to the journal.
 		redacted := redact.Redact(promptBody)
-		_ = redacted // summary goes to journal event
 
 		// Call LLM
 		resp, err := llm.Complete(ctx, ports.LLMRequest{
@@ -117,7 +117,7 @@ func securityAgentHandler(llm ports.LLMProvider, redact *observability.Redactor)
 				},
 			},
 			Events: []ports.RawEvent{
-				makeAgentLLMCallEvent(agent, resp, "security-analyze", redact),
+				makeAgentLLMCallEvent(agent, resp, "security-analyze", redacted.Summary),
 			},
 		}, nil
 	}
@@ -143,7 +143,7 @@ func parseSecurityProposal(content string) ([]ports.Operation, error) {
 }
 
 // makeAgentLLMCallEvent creates a journal event for an LLM call.
-func makeAgentLLMCallEvent(agent *behavior.AgenticContext, resp ports.LLMResponse, operation string, redact *observability.Redactor) ports.RawEvent {
+func makeAgentLLMCallEvent(agent *behavior.AgenticContext, resp ports.LLMResponse, operation string, redactedSummary string) ports.RawEvent {
 	tenantID := string(agent.TenantID)
 	correlationID := agent.IDGenerator.NewID()
 
@@ -153,7 +153,7 @@ func makeAgentLLMCallEvent(agent *behavior.AgenticContext, resp ports.LLMRespons
 		Operation:      operation,
 		InputTokens:    resp.TokenUsed / 2, // rough estimate
 		OutputTokens:   resp.TokenUsed / 2,
-		RedactedPrompt: redact.Redact("").Summary, // prompt already redacted
+		RedactedPrompt: redactedSummary, // real redaction of promptBody
 		CorrelationID:  correlationID,
 	}
 

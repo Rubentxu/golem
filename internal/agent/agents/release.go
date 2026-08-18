@@ -84,9 +84,9 @@ func releaseAgentHandler(llm ports.LLMProvider, redact *observability.Redactor) 
 		// (lens executes in pipeline.go before this handler is called).
 		promptBody := fmt.Sprintf(releasePromptTemplate, renderReleaseContext(payload.ReleaseID))
 
-		// Redact prompt before LLM call (PII detection per ADR-066)
+		// Redact prompt before LLM call (PII detection per ADR-066).
+		// redacted.Summary (not empty redact.Redact("")) is passed to the journal.
 		redacted := redact.Redact(promptBody)
-		_ = redacted // summary goes to journal event
 
 		// Call LLM
 		resp, err := llm.Complete(ctx, ports.LLMRequest{
@@ -114,7 +114,7 @@ func releaseAgentHandler(llm ports.LLMProvider, redact *observability.Redactor) 
 				},
 			},
 			Events: []ports.RawEvent{
-				makeReleaseAgentLLMCallEvent(agent, resp, "release-evaluate", redact),
+				makeReleaseAgentLLMCallEvent(agent, resp, "release-evaluate", redacted.Summary),
 			},
 		}, nil
 	}
@@ -143,7 +143,7 @@ func parseReleaseProposal(content string) ([]ports.Operation, error) {
 }
 
 // makeReleaseAgentLLMCallEvent creates a journal event for a Release agent LLM call.
-func makeReleaseAgentLLMCallEvent(agent *behavior.AgenticContext, resp ports.LLMResponse, operation string, redact *observability.Redactor) ports.RawEvent {
+func makeReleaseAgentLLMCallEvent(agent *behavior.AgenticContext, resp ports.LLMResponse, operation string, redactedSummary string) ports.RawEvent {
 	tenantID := string(agent.TenantID)
 	correlationID := agent.IDGenerator.NewID()
 
@@ -153,7 +153,7 @@ func makeReleaseAgentLLMCallEvent(agent *behavior.AgenticContext, resp ports.LLM
 		Operation:      operation,
 		InputTokens:    resp.TokenUsed / 2,
 		OutputTokens:   resp.TokenUsed / 2,
-		RedactedPrompt: redact.Redact("").Summary,
+		RedactedPrompt: redactedSummary, // real redaction of promptBody
 		CorrelationID:  correlationID,
 	}
 
