@@ -13,12 +13,15 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/metric"
@@ -83,30 +86,107 @@ func Setup(ctx context.Context, serviceName, serviceVersion string) (ports.Obser
 	}, shutdown, nil
 }
 
+// otelEndpoint returns the OTEL_EXPORTER_OTLP_ENDPOINT environment variable value.
+func otelEndpoint() string {
+	return os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+}
+
 func tracerProvider(res *resource.Resource) (*sdktrace.TracerProvider, func(context.Context) error, error) {
-	// TODO M5: OTLP exporter when OTEL_EXPORTER_OTLP_ENDPOINT is set.
-	exp, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+	endpoint := otelEndpoint()
+	if endpoint == "" {
+		// Use stdout exporter for development
+		exp, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+		if err != nil {
+			return nil, nil, fmt.Errorf("otel: stdout trace exporter: %w", err)
+		}
+		tp := sdktrace.NewTracerProvider(
+			sdktrace.WithBatcher(exp),
+			sdktrace.WithResource(res),
+		)
+		return tp, tp.Shutdown, nil
+	}
+
+	// Use OTLP/HTTP trace exporter
+	u, err := url.Parse(endpoint)
 	if err != nil {
-		return nil, nil, fmt.Errorf("otel: stdout trace exporter: %w", err)
+		return nil, nil, fmt.Errorf("otel: invalid OTEL_EXPORTER_OTLP_ENDPOINT: %w", err)
+	}
+
+	opts := []otlptracehttp.Option{
+		otlptracehttp.WithEndpoint(u.Host),
+		otlptracehttp.WithInsecure(),
+	}
+	if u.Path != "" && u.Path != "/" {
+		opts = append(opts, otlptracehttp.WithURLPath(u.Path+"/v1/traces"))
+	} else {
+		opts = append(opts, otlptracehttp.WithURLPath("/v1/traces"))
+	}
+
+	exporter, err := otlptracehttp.New(context.Background(), opts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("otel: OTLP trace exporter: %w", err)
 	}
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exp),
+		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
 	)
-	return tp, tp.Shutdown, nil
+	return tp, func(ctx context.Context) error {
+		errExp := exporter.Shutdown(ctx)
+		errTp := tp.Shutdown(ctx)
+		if errExp != nil {
+			return errExp
+		}
+		return errTp
+	}, nil
 }
 
 func meterProvider(res *resource.Resource) (*sdkmetric.MeterProvider, func(context.Context) error, error) {
-	// TODO M5: OTLP exporter when OTEL_EXPORTER_OTLP_ENDPOINT is set.
-	exp, err := stdoutmetric.New()
+	endpoint := otelEndpoint()
+	if endpoint == "" {
+		// Use stdout exporter for development
+		exp, err := stdoutmetric.New()
+		if err != nil {
+			return nil, nil, fmt.Errorf("otel: stdout metric exporter: %w", err)
+		}
+		mp := sdkmetric.NewMeterProvider(
+			sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exp, sdkmetric.WithInterval(15*time.Second))),
+			sdkmetric.WithResource(res),
+		)
+		return mp, mp.Shutdown, nil
+	}
+
+	// Use OTLP/HTTP metric exporter
+	u, err := url.Parse(endpoint)
 	if err != nil {
-		return nil, nil, fmt.Errorf("otel: stdout metric exporter: %w", err)
+		return nil, nil, fmt.Errorf("otel: invalid OTEL_EXPORTER_OTLP_ENDPOINT: %w", err)
+	}
+
+	opts := []otlpmetrichttp.Option{
+		otlpmetrichttp.WithEndpoint(u.Host),
+		otlpmetrichttp.WithInsecure(),
+	}
+	if u.Path != "" && u.Path != "/" {
+		opts = append(opts, otlpmetrichttp.WithURLPath(u.Path+"/v1/metrics"))
+	} else {
+		opts = append(opts, otlpmetrichttp.WithURLPath("/v1/metrics"))
+	}
+
+	exporter, err := otlpmetrichttp.New(context.Background(), opts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("otel: OTLP metric exporter: %w", err)
 	}
 	mp := sdkmetric.NewMeterProvider(
-		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exp, sdkmetric.WithInterval(15*time.Second))),
 		sdkmetric.WithResource(res),
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter, sdkmetric.WithInterval(15*time.Second))),
 	)
-	return mp, mp.Shutdown, nil
+	return mp, func(ctx context.Context) error {
+		errExp := exporter.Shutdown(ctx)
+		errMp := mp.Shutdown(ctx)
+		if errExp != nil {
+			return errExp
+		}
+		return errMp
+	}, nil
 }
 
 func slogLevel() slog.Level {
