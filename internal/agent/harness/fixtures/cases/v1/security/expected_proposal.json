@@ -1,0 +1,30 @@
+{
+  "id": "p-security-001",
+  "tenant_id": "t-piloto",
+  "target": "graph:vulnerability:cve-2025-1234",
+  "observed_revision": "rev-001",
+  "operations": [
+    {
+      "kind": "CreateNode",
+      "data": {
+        "kind": "VEXStatement",
+        "id": "vex-cve-2025-1234",
+        "vulnerability_id": "CVE-2025-1234",
+        "state": "fixed",
+        "justification": "Fixed in version 2.1.0"
+      }
+    },
+    {
+      "kind": "AddEdge",
+      "data": {
+        "from": "vex-cve-2025-1234",
+        "to": "sbom-test-001",
+        "type": "MITIGATED_BY"
+      }
+    }
+  ],
+  "rationale": "CVE-2025-1234 found in SBOM. Proposing VEX statement with state=fixed to document remediation.",
+  "evidence_refs": ["sbom-test-001"],
+  "risk": "low",
+  "status": "proposed"
+}

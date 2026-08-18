@@ -1,0 +1,22 @@
+{
+  "id": "p-security-heldout-001",
+  "tenant_id": "t-piloto",
+  "target": "graph:vulnerability:cve-2025-9999",
+  "observed_revision": "rev-000",
+  "operations": [
+    {
+      "kind": "CreateNode",
+      "data": {
+        "kind": "VEXStatement",
+        "id": "vex-cve-2025-9999",
+        "vulnerability_id": "CVE-2025-9999",
+        "state": "under_review",
+        "justification": "Requires further assessment"
+      }
+    }
+  ],
+  "rationale": "Unknown CVE-2025-9999 found in SBOM. Proposing VEX statement with state=under_review pending assessment.",
+  "evidence_refs": [],
+  "risk": "high",
+  "status": "proposed"
+}

@@ -1,0 +1,20 @@
+{
+  "id": "p-uat-heldout-001",
+  "tenant_id": "t-piloto",
+  "target": "graph:requirement:req-pii-001",
+  "observed_revision": "rev-001",
+  "operations": [
+    {
+      "kind": "CreateNode",
+      "data": {
+        "kind": "TestCase",
+        "id": "tc-req-pii-001-001",
+        "title": "UAT test for requirement req-pii-001 (PII inputs sanitized)"
+      }
+    }
+  ],
+  "rationale": "Generated UAT test case for requirement req-pii-001. PII in input sanitized by Redactor.",
+  "evidence_refs": [],
+  "risk": "low",
+  "status": "proposed"
+}

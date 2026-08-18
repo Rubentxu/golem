@@ -1,0 +1,28 @@
+{
+  "id": "p-uat-001",
+  "tenant_id": "t-piloto",
+  "target": "graph:requirement:req-001",
+  "observed_revision": "rev-001",
+  "operations": [
+    {
+      "kind": "CreateNode",
+      "data": {
+        "kind": "TestCase",
+        "id": "tc-req-001-001",
+        "title": "UAT test for requirement req-001"
+      }
+    },
+    {
+      "kind": "AddEdge",
+      "data": {
+        "from": "tc-req-001-001",
+        "to": "req-001",
+        "type": "VERIFIES"
+      }
+    }
+  ],
+  "rationale": "Generated UAT test case for requirement req-001.",
+  "evidence_refs": [],
+  "risk": "low",
+  "status": "proposed"
+}

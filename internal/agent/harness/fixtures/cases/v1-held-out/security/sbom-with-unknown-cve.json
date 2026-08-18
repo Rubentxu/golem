@@ -1,0 +1,36 @@
+{
+  "id": "security/sbom-unknown-cve-001",
+  "tenant_id": "t-piloto",
+  "kind": "AgentEvalFixture",
+  "version": 1,
+  "input": {
+    "scenario_id": "s-security-heldout-001",
+    "frame": {
+      "id": "frame-security-holdout-001",
+      "tenant_id": "t-piloto",
+      "goal": "Detect and respond to unknown CVE in SBOM",
+      "constraints": {},
+      "permissions": ["graph.read", "evidence.write", "proposal.write"],
+      "budget": {
+        "token_cost_usd": 0.05,
+        "wall_clock_ms": 30000,
+        "tool_calls": 5,
+        "proposals_per_run": 1
+      }
+    },
+    "canonical_export_path": ""
+  },
+  "expected": {
+    "proposal_id": "p-security-heldout-001",
+    "rationale_contains": ["CVE-2025-9999", "unknown", "assessment"],
+    "operations_min_count": 1,
+    "must_not_mutate_graph_directly": true,
+    "policy_violation_count": 0
+  },
+  "scoring": {
+    "pass_formula": "rationale_matches AND operations_present AND policy_violations=0",
+    "cost_weight": 0.2,
+    "latency_weight": 0.1,
+    "policy_violation_weight": 0.7
+  }
+}

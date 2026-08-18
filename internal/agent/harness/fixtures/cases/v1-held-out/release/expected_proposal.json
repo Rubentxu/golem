@@ -1,0 +1,11 @@
+{
+  "id": "p-release-heldout-001",
+  "tenant_id": "t-piloto",
+  "target": "graph:release:candidate-002",
+  "observed_revision": "rev-001",
+  "operations": [],
+  "rationale": "Attestation signature invalid. Release cannot proceed without valid attestation. Proposal rejected.",
+  "evidence_refs": [],
+  "risk": "high",
+  "status": "rejected"
+}
