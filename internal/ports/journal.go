@@ -74,4 +74,6 @@ var (
 	ErrBackupInProgress = errors.New("journal: backup in progress")
 	// ErrRestoreMismatch is returned when the backup digest does not match.
 	ErrRestoreMismatch = errors.New("journal: restore digest mismatch")
+	// ErrRestoreNotEmpty is returned when Restore is called on a non-empty journal.
+	ErrRestoreNotEmpty = errors.New("journal: restore requires empty journal")
 )
