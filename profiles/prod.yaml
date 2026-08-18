@@ -1,0 +1,1 @@
+{"version":1,"name":"prod","adapters":{"journal":"bbolt","graph":"memstore","registry":"filesystem","transport":"memstore","checkpoint":"bbolt","search":"memstore","llm":"openai-compatible","policy":"memstore","eval":"enabled","audit_export":"s3","dr":"bbolt","slo":"prometheus","paging":"webhook","authn":"oidc","ops_console":"http"}}
