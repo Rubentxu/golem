@@ -181,7 +181,7 @@
   },
   "ADR-037": {
     "title": "Graph Lenses bound execution context",
-    "status": "Accepted",
+    "status": "Superseded by ADR-059",
     "date": "2026-08-17"
   },
   "ADR-038": {
@@ -201,7 +201,7 @@
   },
   "ADR-041": {
     "title": "Scenario fork/diff/promote is first-class",
-    "status": "Accepted",
+    "status": "Superseded by ADR-060",
     "date": "2026-08-17"
   },
   "ADR-042": {
@@ -286,6 +286,16 @@
   },
   "ADR-058": {
     "title": "Capability Packs v1: declarative activation over the journal",
+    "status": "Accepted",
+    "date": "2026-08-18"
+  },
+  "ADR-059": {
+    "title": "Behavior Engine v1: deterministic native behaviors",
+    "status": "Accepted",
+    "date": "2026-08-18"
+  },
+  "ADR-060": {
+    "title": "Scenarios: fork/diff/promote over overlay deltas",
     "status": "Accepted",
     "date": "2026-08-18"
   }

@@ -38,11 +38,11 @@
 | [ADR-034](ADR-034.md) | Accepted | Reactive Behaviors are a kernel primitive |
 | [ADR-035](ADR-035.md) | Accepted | Relations may own behavior |
 | [ADR-036](ADR-036.md) | Accepted | Graph Pattern Subscriptions are bounded and compiled |
-| [ADR-037](ADR-037.md) | Accepted | Graph Lenses bound execution context |
+| [ADR-037](ADR-037.md) | Superseded by ADR-059 | Graph Lenses bound execution context |
 | [ADR-038](ADR-038.md) | Accepted | Change Proposal is the privileged write primitive |
 | [ADR-039](ADR-039.md) | Accepted | Agents default to proposal-only writes |
 | [ADR-040](ADR-040.md) | Accepted | Execution Frames bound goals, permissions and budgets |
-| [ADR-041](ADR-041.md) | Accepted | Scenario fork/diff/promote is first-class |
+| [ADR-041](ADR-041.md) | Superseded by ADR-060 | Scenario fork/diff/promote is first-class |
 | [ADR-042](ADR-042.md) | Accepted | Capability Packs are the domain extension unit |
 | [ADR-043](ADR-043.md) | Accepted | Capability Packs are distributed as OCI artifacts |
 | [ADR-044](ADR-044.md) | Accepted | Third-party code is isolated from hot kernel |
@@ -58,3 +58,5 @@
 | [ADR-054](ADR-054.md) | Accepted | Provenance and signing behind dedicated ports |
 | [ADR-055](ADR-055.md) | Accepted | Vulnerability and VEX as first-class graph data |
 | [ADR-056](ADR-056.md) | Accepted | Typed graph traversal with explicit truncation || [ADR-058](ADR-058.md) | Accepted | Capability Packs v1: declarative activation over the journal |
+| [ADR-059](ADR-059.md) | Accepted | Behavior Engine v1: deterministic native behaviors |
+| [ADR-060](ADR-060.md) | Accepted | Scenarios: fork/diff/promote over overlay deltas |
