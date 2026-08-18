@@ -62,3 +62,24 @@
 | [ADR-060](ADR-060.md) | Accepted | Scenarios: fork/diff/promote over overlay deltas |
 | [ADR-061](ADR-061.md) | Accepted | LLM Provider Port and Capabilities |
 | [ADR-062](ADR-062.md) | Accepted | Tool Port and Capability Catalog v2 |
+| [ADR-063](ADR-063.md) | Accepted | Policy Port v2 with PolicyEvaluator |
+| [ADR-064](ADR-064.md) | Deprecated | Frame Budget Limits moved to REQ-QUOTA-001 |
+| [ADR-065](ADR-065.md) | Accepted | Redaction Pipeline for PII Safety |
+| [ADR-066](ADR-066.md) | Accepted | LLM Redactor in Journal Pipeline |
+| [ADR-067](ADR-067.md) | Accepted | Tracing Correlation Context |
+| [ADR-068](ADR-068.md) | Accepted | OTel Span Per Call with Correlation |
+| [ADR-069](ADR-069.md) | Accepted | Agent Budget Limits as First-Class |
+| [ADR-070](ADR-070.md) | Accepted | Agent Eval Harness for Behavior Scoring |
+| [ADR-071](ADR-071.md) | Accepted | Held-Out Fixtures for Agent Eval |
+| [ADR-072](ADR-072.md) | Accepted | Agentic Behavior Kind v1 |
+| [ADR-073](ADR-073.md) | Accepted | Metering Hook on Command Bus |
+| [ADR-074](ADR-074.md) | Accepted | Multi-cell data partitioning (D1) |
+| [ADR-075](ADR-075.md) | Accepted | Tenant migration (D2) |
+| [ADR-076](ADR-076.md) | Accepted | Quotas per tenant (D3) |
+| [ADR-077](ADR-077.md) | Accepted | Metering pipeline to S3 (D4) |
+| [ADR-078](ADR-078.md) | Accepted | Audit export with KMS signature (D5) |
+| [ADR-079](ADR-079.md) | Accepted | DR automation with restore drill (D6) |
+| [ADR-080](ADR-080.md) | Accepted | SLO framework with error budget (D7) |
+| [ADR-081](ADR-081.md) | Accepted | Ops console operator-only (D8) |
+| [ADR-082](ADR-082.md) | Accepted | OIDC bearer + JWKS discovery (D9) |
+| [ADR-083](ADR-083.md) | Accepted | Profile composition + AWS managed (D10) |
