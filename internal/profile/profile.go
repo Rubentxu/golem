@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -42,7 +43,11 @@ var adapterKinds = map[string][]string{
 
 // Load resolves and validates the profile with the given name.
 // Resolution order: ./, $GOLEM_PROFILE_DIR/, /etc/golem/.
-// If no file is found, falls back to the embedded dev profile.
+//
+// Embedded defaults:
+//   - name == "" or "dev"  → DevProfile() (all memstore)
+//   - name == "durable"     → DurableProfile() (bbolt + natsjs)
+//   - name is unknown and no file found → fail-fast with clear error
 func Load(name string) (Profile, error) {
 	if name == "" {
 		name = "dev"
@@ -73,8 +78,19 @@ func Load(name string) (Profile, error) {
 		}
 	}
 
-	// Fallback: embedded dev profile.
-	return DevProfile(), nil
+	// No file found — use embedded defaults for known profiles.
+	if _, ok := knownProfiles[name]; ok {
+		if name == "durable" {
+			log.Printf("profile=%s source=embedded", name)
+			return DurableProfile(), nil
+		}
+		// dev and ""
+		log.Printf("profile=%s source=embedded", name)
+		return DevProfile(), nil
+	}
+
+	// Unknown profile name with no file → fail fast.
+	return Profile{}, fmt.Errorf("profile %q not found (no golem-profile.%s.yaml in ./, $GOLEM_PROFILE_DIR/, /etc/golem/) and no embedded defaults available", name, name)
 }
 
 // LoadFromEnv reads GOLEM_PROFILE from the environment, defaulting to "dev".
@@ -173,4 +189,32 @@ func DevProfile() Profile {
 		},
 		Options: nil,
 	}
+}
+
+// DurableProfile returns the embedded durable profile (bbolt journal + natsjs transport).
+// Options carry the default bbolt path; callers may override at runtime.
+func DurableProfile() Profile {
+	return Profile{
+		Version: 1,
+		Name:    "durable",
+		Adapters: map[string]string{
+			"journal":    "bbolt",
+			"graph":      "memstore",
+			"registry":   "memstore",
+			"transport":  "natsjs",
+			"checkpoint": "memstore",
+			"search":     "memstore",
+		},
+		Options: map[string]any{
+			"bbolt": map[string]any{
+				"path": "./var/golem.journal",
+			},
+		},
+	}
+}
+
+// knownProfiles is the set of profiles with embedded defaults.
+var knownProfiles = map[string]struct{}{
+	"dev":     {},
+	"durable": {},
 }

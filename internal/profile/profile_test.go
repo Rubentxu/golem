@@ -1,6 +1,10 @@
 package profile
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // TestProfileLoadDevDefault verifies that the embedded dev profile
 // matches the hardcoded DevProfile().
@@ -116,4 +120,94 @@ func TestProfileOptionHelper(t *testing.T) {
 	if p.Option("unknown") != nil {
 		t.Errorf("Option(unknown) = non-nil, want nil")
 	}
+}
+
+// TestProfileLoadDevFromCwd verifies that dev profile is resolved from cwd when
+// golem-profile.dev.yaml exists there (S2).
+func TestProfileLoadDevFromCwd(t *testing.T) {
+	tmpDir := t.TempDir()
+	profileFile := filepath.Join(tmpDir, "golem-profile.dev.yaml")
+	content := `{"version":1,"name":"custom-dev","adapters":{"journal":"memstore","graph":"memstore","registry":"memstore","transport":"memstore","checkpoint":"memstore","search":"memstore"}}`
+	if err := os.WriteFile(profileFile, []byte(content), 0644); err != nil {
+		t.Fatalf("write profile file: %v", err)
+	}
+
+	// Change to the tmp dir so Load resolves from ".".
+	oldCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getcwd: %v", err)
+	}
+	defer os.Chdir(oldCwd)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	profile, err := Load("dev")
+	if err != nil {
+		t.Fatalf("Load(dev): %v", err)
+	}
+	if profile.Name != "custom-dev" {
+		t.Errorf("Name = %q, want %q", profile.Name, "custom-dev")
+	}
+}
+
+// TestProfileLoadDurableEmbeddedDefaults verifies that GOLEM_PROFILE=durable
+// without a file returns DurableProfile() embedded defaults (S4+S5).
+func TestProfileLoadDurableEmbeddedDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getcwd: %v", err)
+	}
+	defer os.Chdir(oldCwd)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	profile, err := Load("durable")
+	if err != nil {
+		t.Fatalf("Load(durable): %v", err)
+	}
+	if profile.Name != "durable" {
+		t.Errorf("Name = %q, want %q", profile.Name, "durable")
+	}
+	// S5: durable selects bbolt for journal and natsjs for transport.
+	if profile.Adapter("journal") != "bbolt" {
+		t.Errorf("Adapters[journal] = %q, want %q", profile.Adapter("journal"), "bbolt")
+	}
+	if profile.Adapter("transport") != "natsjs" {
+		t.Errorf("Adapters[transport] = %q, want %q", profile.Adapter("transport"), "natsjs")
+	}
+	// Other adapters default to memstore.
+	if profile.Adapter("graph") != "memstore" {
+		t.Errorf("Adapters[graph] = %q, want %q", profile.Adapter("graph"), "memstore")
+	}
+	// Options carry bbolt path default.
+	opts := profile.Option("bbolt")
+	if opts == nil {
+		t.Fatal("Option(bbolt) = nil, want non-nil")
+	}
+	if opts["path"] == nil {
+		t.Error("Option(bbolt)[path] = nil, want non-nil")
+	}
+}
+
+// TestProfileLoadUnknownProfileFailFast verifies that an unknown profile name
+// without a file returns a clear error (C-1: no silent dev fallback).
+func TestProfileLoadUnknownProfileFailFast(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getcwd: %v", err)
+	}
+	defer os.Chdir(oldCwd)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	_, err = Load("nonexistent")
+	if err == nil {
+		t.Fatal("Load(nonexistent): expected error, got nil")
+	}
+	// Error message should mention the unknown profile name.
 }
