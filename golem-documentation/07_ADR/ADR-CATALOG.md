@@ -19,7 +19,7 @@
 | [ADR-015](ADR-015.md) | Accepted | Search is a rebuildable derived projection |
 | [ADR-016](ADR-016.md) | Accepted | Analytics is a rebuildable derived projection |
 | [ADR-017](ADR-017.md) | Accepted | OIDC is the identity boundary |
-| [ADR-018](ADR-018.md) | Accepted | Policy engine behind PolicyEvaluator port |
+| [ADR-018](ADR-018.md) | Superseded by [ADR-063](ADR-063.md) | Policy engine behind PolicyEvaluator port |
 | [ADR-019](ADR-019.md) | Accepted | OpenTelemetry is the observability contract |
 | [ADR-020](ADR-020.md) | Accepted | Use transactional outbox and idempotent inbox |
 | [ADR-021](ADR-021.md) | Accepted | Optimistic concurrency is the default mutation model |
@@ -41,7 +41,7 @@
 | [ADR-037](ADR-037.md) | Superseded by ADR-059 | Graph Lenses bound execution context |
 | [ADR-038](ADR-038.md) | Accepted | Change Proposal is the privileged write primitive |
 | [ADR-039](ADR-039.md) | Accepted | Agents default to proposal-only writes |
-| [ADR-040](ADR-040.md) | Accepted | Execution Frames bound goals, permissions and budgets |
+| [ADR-040](ADR-040.md) | Superseded by [ADR-064](ADR-064.md) | Execution Frames bound goals, permissions and budgets |
 | [ADR-041](ADR-041.md) | Superseded by ADR-060 | Scenario fork/diff/promote is first-class |
 | [ADR-042](ADR-042.md) | Accepted | Capability Packs are the domain extension unit |
 | [ADR-043](ADR-043.md) | Accepted | Capability Packs are distributed as OCI artifacts |
