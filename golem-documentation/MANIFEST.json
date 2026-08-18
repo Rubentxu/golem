@@ -5,7 +5,7 @@
   "generated": "2026-08-17",
   "language": "es-ES",
   "file_count": 145,
-  "adr_count": 57,
+  "adr_count": 58,
   "validation": {
     "json": "valid",
     "yaml": "valid",
@@ -116,9 +116,9 @@
     "07_ADR/ADR-055.md": "dc80e0fcfb2aa91366c4d228e677d7a6ffb73affbff49a9fb61dbb6c58039df9",
     "07_ADR/ADR-056.md": "b86d49e07ecfe6ba32cd999b4d80eb1cd32f47e747360abb5c1d5f81abc75ed5",
     "07_ADR/ADR-057.md": "7fef86d35ab82e91905cb26577e9d60ab3e7ffce458f5295092aae3e3f6ab8b0",
-    "07_ADR/ADR-CATALOG.md": "8d313c6121090d3d98fcb166ac43b6a7fa13ec66e3a5e1cbc85b95e61855c471",
+    "07_ADR/ADR-CATALOG.md": "c28a20f580cf8362a8289c44801ed9b495237de819f815f2cc94a71e394aece9",
     "07_ADR/README.md": "117cf8fba342e67e4785c40a8ebb6880a0facb19a7024d14d946cf7c1986c32a",
-    "07_ADR/adr-index.json": "be39240f4fb90b04ca275a8a72a1d424a25a9341e09087b0438a229bce313095",
+    "07_ADR/adr-index.json": "cffdc6d119ace3699029f936f56f17e07cefac53d917e9556ff988da1eeec03e",
     "08_DELIVERY/BACKLOG_EPICS.md": "5c961fbad702c5a0465916d39b6eb2bc128da133d5e70fd934f60d7cd410ea6c",
     "08_DELIVERY/DEFINITION_OF_DONE.md": "c79f4df69d3cabf1c5d6dca209a8e091528900d72b0cf2a50c6d4ce748cc26ba",
     "08_DELIVERY/IMPLEMENTATION_SEQUENCE.md": "b69761e1a917ac8850d8e8766683dda1717081b9bd24e091a8c5b3da09dfeffa",
@@ -155,6 +155,7 @@
     "examples/capability-pack/manifest.json": "2711875d3ebe30c4ba5571ac77c11d085d88e94dc4bde154f1d41a1cc8cf6a0a",
     "examples/events/artifact-sbom-ingested.json": "0ab11b0f13f002e3c0f76c0901959e7e75d12780d34745979915dc406115de1a",
     "examples/go/events.go": "0515f593194c98561b9bbd5074cbd2a88dbc664b36415df35d634bb481de0626",
-    "examples/go/ports.go": "a5cbef7b2ade7ccc48c97da06e3eef5dc4fa1a0d72c789d98f62816d8cdda562"
+    "examples/go/ports.go": "a5cbef7b2ade7ccc48c97da06e3eef5dc4fa1a0d72c789d98f62816d8cdda562",
+    "07_ADR/ADR-058.md": "c69a9a80b1ca4750a32f5cc82cf57ee1807058c2c2adff9b3c83b4de482a9705"
   }
 }

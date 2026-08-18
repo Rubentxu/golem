@@ -57,4 +57,4 @@
 | [ADR-053](ADR-053.md) | Accepted | SBOM ingestion through the SBOMParser port |
 | [ADR-054](ADR-054.md) | Accepted | Provenance and signing behind dedicated ports |
 | [ADR-055](ADR-055.md) | Accepted | Vulnerability and VEX as first-class graph data |
-| [ADR-056](ADR-056.md) | Accepted | Typed graph traversal with explicit truncation |
+| [ADR-056](ADR-056.md) | Accepted | Typed graph traversal with explicit truncation || [ADR-058](ADR-058.md) | Accepted | Capability Packs v1: declarative activation over the journal |

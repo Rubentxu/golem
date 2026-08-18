@@ -283,5 +283,10 @@
     "title": "Provider Profile and Adapter Selection",
     "status": "Accepted",
     "date": "2026-08-18"
+  },
+  "ADR-058": {
+    "title": "Capability Packs v1: declarative activation over the journal",
+    "status": "Accepted",
+    "date": "2026-08-18"
   }
 }
