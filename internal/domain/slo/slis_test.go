@@ -21,11 +21,11 @@ func TestSLI_AllThirteenDefined(t *testing.T) {
 		SLIOIDCVerifyLatencyP99:       false,
 		SLIOpsConsoleActionLatencyP99: false,
 		SLIAuditExportSuccessRate:     false,
-		SLIMeteringRollupSuccessRate: false,
-		SLIQuotaCheckLatencyP99:      false,
-		SLICellMigrateDurationP99:    false,
+		SLIMeteringRollupSuccessRate:  false,
+		SLIQuotaCheckLatencyP99:       false,
+		SLICellMigrateDurationP99:     false,
 		SLISnapshotDurationP99:        false,
-		SLIMeterQueryLatencyP99:      false,
+		SLIMeterQueryLatencyP99:       false,
 	}
 
 	for _, sli := range slis {

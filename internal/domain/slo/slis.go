@@ -12,17 +12,17 @@ type SLIName string
 // SLI definitions for the 13 tracked indicators (ADR-080).
 const (
 	// Command API SLIs
-	SLICommandLatencyP99    SLIName = "command.latency.p99"
-	SLICommandErrorRate     SLIName = "command.error_rate"
+	SLICommandLatencyP99 SLIName = "command.latency.p99"
+	SLICommandErrorRate  SLIName = "command.error_rate"
 
 	// System SLIs
-	SLISystemAvailability   SLIName = "system.availability"
+	SLISystemAvailability SLIName = "system.availability"
 
 	// Journal SLIs
 	SLIJournalReplayTimeP99 SLIName = "journal.replay_time.p99"
 
 	// Agent SLIs
-	SLIAgentEvalPassRate    SLIName = "agent.eval_pass_rate"
+	SLIAgentEvalPassRate SLIName = "agent.eval_pass_rate"
 
 	// OIDC SLIs
 	SLIOIDCVerifyLatencyP99 SLIName = "oidc.verify_latency.p99"
@@ -37,17 +37,17 @@ const (
 	SLIMeteringRollupSuccessRate SLIName = "metering.rollup.success_rate"
 
 	// Additional internal SLIs
-	SLIQuotaCheckLatencyP99  SLIName = "quota.check_latency.p99"
+	SLIQuotaCheckLatencyP99   SLIName = "quota.check_latency.p99"
 	SLICellMigrateDurationP99 SLIName = "cell.migrate.duration.p99"
-	SLISnapshotDurationP99   SLIName = "snapshot.duration.p99"
-	SLIMeterQueryLatencyP99  SLIName = "meter.query_latency.p99"
+	SLISnapshotDurationP99    SLIName = "snapshot.duration.p99"
+	SLIMeterQueryLatencyP99   SLIName = "meter.query_latency.p99"
 )
 
 // SLIDefinition defines an SLI with its target and window.
 type SLIDefinition struct {
 	Name        SLIName
 	Description string
-	Unit        string // e.g., "ms", "percent", "ratio"
+	Unit        string  // e.g., "ms", "percent", "ratio"
 	Target      float64 // e.g., 0.999 for 99.9%
 	Window      time.Duration
 }
