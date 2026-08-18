@@ -147,7 +147,7 @@ The schema is informational for M5 (no consumer validates against it yet). It re
 ```
 
 - `format_version`: **always `"1"` in M5**. Any other value causes `ErrUnsupportedFormatVersion` at load time.
-- `files`: SHA-256 hex digest of each file's raw content, computed after serialization and before tar assembly. The manifest itself is not hashed (it is the载体).
+- `files`: SHA-256 hex digest of each file's raw content, computed after serialization and before tar assembly. The manifest itself is not hashed (it is the digest carrier).
 - `counts`: number of top-level JSON objects in each `.jsonl` file (line count).
 - `extensions`: reserved for future use without a version bump. Consumers MUST ignore unknown keys in this map.
 
@@ -165,7 +165,7 @@ The `format_version` field is the **only** versioning mechanism. There is no MIM
 1. Take `Journal.Head()` **once** at the start of `Export()` and freeze it in `journal-position.json`.
 2. Serialize `nodes.jsonl` and `edges.jsonl` with `json.Encoder` (one object per `Encode()` call, no trailing whitespace beyond the final newline).
 3. Compute SHA-256 of each file **after** serialization, **before** writing into the tar.
-4. Write files into the tar in the order: `nodes.jsonl`, `edges.jsonl`, `journal-position.json`, `ontology.schema.json`, `manifest.json`.
+4. Write files into the tar in the order: `manifest.json`, `nodes.jsonl`, `edges.jsonl`, `journal-position.json`, `ontology.schema.json`. The manifest goes **first** so a streaming consumer can validate `format_version` and plan verification before reading payload entries; digests are still computed over the fully serialized payloads (rule 3) before tar assembly.
 5. Use `archive/tar` with `tar.TypeReg` for all files (no special permissions, no symlinks).
 
 ## Consumer Rules (Reader)
