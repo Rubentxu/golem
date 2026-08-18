@@ -11,14 +11,27 @@ import (
 
 // Manifest describes the contents of a canonical export archive.
 // It is serialized as manifest.json in the archive root.
+// Format version 2 adds a SignedBlock for KMS signature verification (AC-14).
 type Manifest struct {
-	FormatVersion   string                `json:"format_version"`       // Always "1"
-	TenantID        string                `json:"tenant_id"`            // Tenant scope
-	CreatedAt       string                `json:"created_at"`           // ISO-8601
-	JournalPosition JournalPosition       `json:"journal_position"`     // Head position at export time
-	Files           map[string]FileDigest `json:"files"`                // path → sha256
-	Counts          Counts                `json:"counts"`               // node/edge line counts
-	Extensions      map[string]any        `json:"extensions,omitempty"` // Forward-compat
+	FormatVersion   string                `json:"format_version"`         // "2" for signed manifests
+	TenantID        string                `json:"tenant_id"`              // Tenant scope
+	CreatedAt       string                `json:"created_at"`             // ISO-8601
+	JournalPosition JournalPosition       `json:"journal_position"`       // Head position at export time
+	Files           map[string]FileDigest `json:"files"`                  // path → sha256
+	Counts          Counts                `json:"counts"`                 // node/edge line counts
+	SignedBlock     *SignedBlock          `json:"signed_block,omitempty"` // KMS signature (v2+)
+	Extensions      map[string]any        `json:"extensions,omitempty"`   // Forward-compat
+}
+
+// SignedBlock holds the KMS signature over the canonical export bytes (AC-14, REQ-AUDIT-002).
+type SignedBlock struct {
+	// KeyID is the KMS key alias used for signing (e.g. alias/golem-export).
+	KeyID string `json:"key_id"`
+	// Signature is the hex-encoded RSASSA-PKCS1-v1.5 signature over the
+	// canonical export tar bytes (all files concatenated in deterministic order).
+	Signature string `json:"signature"`
+	// Regions lists the S3 replication destinations for multi-region durability.
+	Regions []string `json:"regions,omitempty"`
 }
 
 // FileDigest holds the SHA-256 digest of one file in the archive.
@@ -65,11 +78,38 @@ func (m *Manifest) SetCounts(nodes, edges uint64) {
 }
 
 // Validate checks the manifest is valid for reading.
+// Supports both v1 (unsigned) and v2 (signed) formats.
 func (m *Manifest) Validate() error {
-	if m.FormatVersion != FormatVersion {
+	switch m.FormatVersion {
+	case "1", "2":
+		return nil
+	default:
 		return fmt.Errorf("%w: %q", ErrUnsupportedFormatVersion, m.FormatVersion)
 	}
-	return nil
+}
+
+// SignedPayload returns the canonical bytes that should be signed.
+// For v2, this is the JSON bytes of the manifest excluding the SignedBlock field.
+func (m *Manifest) SignedPayload() ([]byte, error) {
+	// Clone manifest without SignedBlock for signing.
+	signable := struct {
+		FormatVersion   string                `json:"format_version"`
+		TenantID        string                `json:"tenant_id"`
+		CreatedAt       string                `json:"created_at"`
+		JournalPosition JournalPosition       `json:"journal_position"`
+		Files           map[string]FileDigest `json:"files"`
+		Counts          Counts                `json:"counts"`
+		Extensions      map[string]any        `json:"extensions,omitempty"`
+	}{
+		FormatVersion:   m.FormatVersion,
+		TenantID:        m.TenantID,
+		CreatedAt:       m.CreatedAt,
+		JournalPosition: m.JournalPosition,
+		Files:           m.Files,
+		Counts:          m.Counts,
+		Extensions:      m.Extensions,
+	}
+	return json.Marshal(signable)
 }
 
 // MarshalJSON serializes the manifest to JSON.

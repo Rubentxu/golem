@@ -227,8 +227,8 @@ func TestCanonicalRoundTrip(t *testing.T) {
 		t.Fatalf("export: %v", err)
 	}
 
-	if manifest.FormatVersion != "1" {
-		t.Errorf("manifest.FormatVersion = %q, want %q", manifest.FormatVersion, "1")
+	if manifest.FormatVersion != "2" {
+		t.Errorf("manifest.FormatVersion = %q, want %q", manifest.FormatVersion, "2")
 	}
 	if manifest.TenantID != string(tenant) {
 		t.Errorf("manifest.TenantID = %q, want %q", manifest.TenantID, tenant)
@@ -279,8 +279,8 @@ func TestCanonicalEmptyExport(t *testing.T) {
 		t.Fatalf("export: %v", err)
 	}
 
-	if manifest.FormatVersion != "1" {
-		t.Errorf("FormatVersion = %q, want %q", manifest.FormatVersion, "1")
+	if manifest.FormatVersion != "2" {
+		t.Errorf("FormatVersion = %q, want %q", manifest.FormatVersion, "2")
 	}
 	if manifest.Counts.Nodes != 0 {
 		t.Errorf("Counts.Nodes = %d, want 0", manifest.Counts.Nodes)

@@ -9,7 +9,8 @@ package canonical
 import "fmt"
 
 // FormatVersion is the canonical export wire format version.
-const FormatVersion = "1"
+// "1" = original unsigned; "2" = KMS-signed with SignedBlock (AC-14).
+const FormatVersion = "2"
 
 // ErrUnsupportedFormatVersion is returned when the manifest format_version
 // is not "1".
