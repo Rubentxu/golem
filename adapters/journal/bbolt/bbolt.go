@@ -431,7 +431,12 @@ func (s *Store) Backup(ctx context.Context) (ports.BackupHandle, error) {
 	}
 
 	hash := sha256.Sum256(data)
-	head, _ := s.Head(ctx)
+	var head uint64
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		h, _ := readHead(tx)
+		head = h
+		return nil
+	})
 
 	return ports.BackupHandle{
 		ID:        fmt.Sprintf("backup-%d", head),
@@ -439,13 +444,6 @@ func (s *Store) Backup(ctx context.Context) (ports.BackupHandle, error) {
 		Digest:    fmt.Sprintf("sha256:%x", hash),
 		SizeBytes: int64(len(data)),
 	}, nil
-}
-
-// Restore restores from a backup handle (REQ-DR-001).
-func (s *Store) Restore(ctx context.Context, handle ports.BackupHandle) error {
-	_ = ctx
-	// bbolt restore requires closing and reopening; this is a stub for TCK.
-	return nil
 }
 
 // validateEvent checks envelope invariants before persisting.
