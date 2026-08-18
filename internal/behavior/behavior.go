@@ -26,6 +26,10 @@ type HandlerInput struct {
 	LensResult lens.Result // empty when the behavior declares no lens
 	Clock      ports.Clock
 	IDs        ports.IDGenerator
+	// Agentic is non-nil when the behavior Kind is KindAgentic.
+	// It provides access to LLM, tools, frame, and budget.
+	// Nil for deterministic/relation behaviors — always check Kind() first.
+	Agentic *AgenticContext
 }
 
 // HandlerOutput carries the observable outcomes a behavior produces.
@@ -82,4 +86,10 @@ type Behavior struct {
 	Policy        Policy
 	Budget        Budget
 	Handler       Handler
+	// AgenticH is the handler for agentic (LLM-driven) behaviors.
+	// Non-nil only when Kind_ == KindAgentic.
+	AgenticH AgenticHandler
+	// Kind_ is the behavior kind. Empty = KindDeterministic (v1 default).
+	// Set to KindAgentic for LLM-driven agentic behaviors.
+	Kind_ string
 }

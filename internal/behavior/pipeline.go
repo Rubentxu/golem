@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/Rubentxu/golem/internal/agent/observability"
 	"github.com/Rubentxu/golem/internal/lens"
 	"github.com/Rubentxu/golem/internal/ports"
 )
@@ -21,6 +22,28 @@ type Engine struct {
 	registry *Registry
 	graph    ports.GraphStore
 	clock    ports.Clock
+	// agenticCtx provides the injected ports for agentic behaviors.
+	// Nil when no agentic behaviors are registered.
+	agenticCtx *AgenticContext
+}
+
+// EngineOptions extends Engine with optional agentic ports.
+type EngineOptions struct {
+	// AgenticLLM is the LLM provider for agentic behaviors.
+	AgenticLLM ports.LLMProvider
+	// AgenticTools are the tools available to agentic behaviors.
+	AgenticTools []ports.Tool
+	// AgenticFrame is the default frame for agentic behaviors
+	// (overridden per-run via context).
+	AgenticFrame ports.Frame
+	// AgenticBudget is the budget for agentic behaviors.
+	AgenticBudget ports.Budget
+	// AgenticTracer is the OTel tracer for agentic spans (ADR-068).
+	AgenticTracer ports.Tracer
+	// AgenticJournal is the journal for agentic events.
+	AgenticJournal ports.JournalStore
+	// AgenticRedactor redacts PII from prompts/responses (ADR-066).
+	AgenticRedactor *observability.Redactor
 }
 
 // NewEngine wires the engine. Clock is injected; output event IDs are
@@ -28,6 +51,24 @@ type Engine struct {
 // makes replay byte-reproducible.
 func NewEngine(reg *Registry, graph ports.GraphStore, clock ports.Clock) *Engine {
 	return &Engine{registry: reg, graph: graph, clock: clock}
+}
+
+// NewEngineWithAgentic wires the engine with agentic ports (ADR-070).
+func NewEngineWithAgentic(reg *Registry, graph ports.GraphStore, clock ports.Clock, opts EngineOptions) *Engine {
+	e := NewEngine(reg, graph, clock)
+	if opts.AgenticLLM != nil || len(opts.AgenticTools) > 0 {
+		e.agenticCtx = &AgenticContext{
+			LLM:      opts.AgenticLLM,
+			Tools:    opts.AgenticTools,
+			Frame:    opts.AgenticFrame,
+			Budget:   opts.AgenticBudget,
+			Tracer:   opts.AgenticTracer,
+			Journal:  opts.AgenticJournal,
+			Redactor: opts.AgenticRedactor,
+			Clock:    clock,
+		}
+	}
+	return e
 }
 
 // Clock exposes the injected clock (shadow runs re-wire engines with the
@@ -63,11 +104,38 @@ func (e *Engine) Handle(ctx context.Context, event ports.RawEvent) ([]Outcome, e
 			outcomes = append(outcomes, oc)
 			continue
 		}
+
+		in := HandlerInput{Event: event, Clock: e.clock, IDs: run}
+
+		// Dispatch based on behavior Kind (D10).
+		if b.IsAgentic() {
+			// Agentic behavior: use AgenticHandler with AgenticContext.
+			ah := b.AgenticHandler()
+			if ah == nil {
+				return nil, fmt.Errorf("%w: agentic handler nil for %s@%s", ErrNoHandler, b.ID, b.Version)
+			}
+			if e.agenticCtx == nil {
+				return nil, fmt.Errorf("agentic behavior %s@%s requires agentic context (call NewEngineWithAgentic)", b.ID, b.Version)
+			}
+			// Inject agentic context with run-specific tenant.
+			agentCtx := *e.agenticCtx // copy
+			agentCtx.TenantID = ports.TenantID(event.TenantID)
+			agentCtx.IDGenerator = run
+			in.Agentic = &agentCtx
+			out, err := ah(ctx, event, &agentCtx)
+			if err != nil {
+				return nil, fmt.Errorf("behavior %s@%s agentic handler: %w", b.ID, b.Version, err)
+			}
+			sort.Slice(out.Events, func(i, j int) bool { return out.Events[i].EventID < out.Events[j].EventID })
+			oc.Output = out
+			outcomes = append(outcomes, oc)
+			continue
+		}
+
+		// v1 behavior.
 		if b.Handler == nil {
 			return nil, fmt.Errorf("%w: %s@%s", ErrNoHandler, b.ID, b.Version)
 		}
-
-		in := HandlerInput{Event: event, Clock: e.clock, IDs: run}
 		if b.LensSpec != nil {
 			tenant := ports.TenantID(event.TenantID)
 			spec := *b.LensSpec
