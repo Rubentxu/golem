@@ -27,10 +27,10 @@ func TestSLOTracker_Evaluate(t *testing.T) {
 
 	tracker := NewTracker()
 	tracker.RegisterSLO(ports.SLO{
-		Name:         "availability",
-		Target:       0.999,
-		WindowHours:  168,
-		ErrorBudget:  0.1,
+		Name:        "availability",
+		Target:      0.999,
+		WindowHours: 168,
+		ErrorBudget: 0.1,
 	})
 
 	// Record some events.
