@@ -25,10 +25,17 @@ var ErrUnsupportedFormatVersion = errors.New("profile: unsupported format_versio
 // Profile describes the adapter selection for one runtime environment.
 // It is parsed from a JSON-shaped YAML file via encoding/json.
 type Profile struct {
-	Version  int               `json:"version"`  // Must be 1
-	Name     string            `json:"name"`     // "dev" | "durable"
-	Adapters map[string]string `json:"adapters"` // adapter kind per port
-	Options  map[string]any    `json:"options"`  // adapter-specific knobs
+	Version  int               `json:"version"`        // Must be 1
+	Name     string            `json:"name"`           // "dev" | "durable"
+	Adapters map[string]string `json:"adapters"`       // adapter kind per port
+	Options  map[string]any    `json:"options"`        // adapter-specific knobs
+	Eval     *EvalConfig       `json:"eval,omitempty"` // eval harness config
+}
+
+// EvalConfig configures the eval harness.
+type EvalConfig struct {
+	Enabled  bool   `json:"enabled"`
+	Fixtures string `json:"fixtures,omitempty"` // path to fixtures directory
 }
 
 // adapterKinds enumerates the known adapter kinds per port.
@@ -39,6 +46,8 @@ var adapterKinds = map[string][]string{
 	"transport":  {"memstore", "natsjs"},
 	"checkpoint": {"memstore"},
 	"search":     {"memstore"},
+	"llm":        {"memstore", "openai-compatible"},
+	"policy":     {"memstore"},
 }
 
 // Load resolves and validates the profile with the given name.
@@ -186,8 +195,14 @@ func DevProfile() Profile {
 			"transport":  "memstore",
 			"checkpoint": "memstore",
 			"search":     "memstore",
+			"llm":        "memstore",
+			"policy":     "memstore",
 		},
 		Options: nil,
+		Eval: &EvalConfig{
+			Enabled:  true,
+			Fixtures: "./fixtures/cases",
+		},
 	}
 }
 
@@ -204,11 +219,17 @@ func DurableProfile() Profile {
 			"transport":  "natsjs",
 			"checkpoint": "memstore",
 			"search":     "memstore",
+			"llm":        "openai-compatible",
+			"policy":     "memstore",
 		},
 		Options: map[string]any{
 			"bbolt": map[string]any{
 				"path": "./var/golem.journal",
 			},
+		},
+		Eval: &EvalConfig{
+			Enabled:  true,
+			Fixtures: "./fixtures/cases",
 		},
 	}
 }

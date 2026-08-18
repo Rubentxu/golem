@@ -211,3 +211,41 @@ func TestProfileLoadUnknownProfileFailFast(t *testing.T) {
 	}
 	// Error message should mention the unknown profile name.
 }
+
+// TestProfile_Validate_LLMAndPolicyRequired verifies that llm and policy adapters
+// are validated correctly (REQ-001).
+func TestProfile_Validate_LLMAndPolicyRequired(t *testing.T) {
+	// Valid profile with llm and policy adapters
+	data := []byte(`{"version":1,"name":"test","adapters":{"journal":"memstore","graph":"memstore","registry":"memstore","transport":"memstore","checkpoint":"memstore","search":"memstore","llm":"memstore","policy":"memstore"}}`)
+	p, err := parseAndValidate(data)
+	if err != nil {
+		t.Fatalf("valid profile failed: %v", err)
+	}
+	if p.Adapter("llm") != "memstore" {
+		t.Errorf("Adapter(llm) = %q, want memstore", p.Adapter("llm"))
+	}
+	if p.Adapter("policy") != "memstore" {
+		t.Errorf("Adapter(policy) = %q, want memstore", p.Adapter("policy"))
+	}
+}
+
+// TestProfile_EvalConfig verifies that eval config is parsed correctly.
+func TestProfile_EvalConfig(t *testing.T) {
+	dev := DevProfile()
+	if dev.Eval == nil {
+		t.Fatal("DevProfile().Eval = nil, want non-nil")
+	}
+	if !dev.Eval.Enabled {
+		t.Error("Eval.Enabled = false, want true")
+	}
+	if dev.Eval.Fixtures == "" {
+		t.Error("Eval.Fixtures = empty, want non-empty")
+	}
+	durable := DurableProfile()
+	if durable.Eval == nil {
+		t.Fatal("DurableProfile().Eval = nil, want non-nil")
+	}
+	if !durable.Eval.Enabled {
+		t.Error("Eval.Enabled = false, want true")
+	}
+}
