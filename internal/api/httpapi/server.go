@@ -133,6 +133,10 @@ type Server struct {
 	packs    PackRegistry
 	obs      ports.Observability
 
+	// MetricsHandler serves the /metrics endpoint (e.g., Prometheus scrape).
+	// Set via WithMetrics before building the handler.
+	MetricsHandler http.Handler
+
 	idsOnce sync.Once
 	idgen   ports.IDGenerator
 }
@@ -162,6 +166,12 @@ func (s *Server) WithObservability(o ports.Observability) *Server {
 	return s
 }
 
+// WithMetrics sets the Prometheus /metrics handler (REQ-OPS-001).
+func (s *Server) WithMetrics(handler http.Handler) *Server {
+	s.MetricsHandler = handler
+	return s
+}
+
 // Handler returns the routed handler wrapped with the observability
 // middleware: correlation propagation (X-Correlation-Id, generated when
 // absent), request spans and status metrics.
@@ -175,6 +185,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	// Prometheus /metrics endpoint (REQ-OPS-001)
+	if s.MetricsHandler != nil {
+		mux.Handle("/metrics", s.MetricsHandler)
+	}
 	mux.HandleFunc("POST /api/v1/work-items", s.handleCreateWorkItem)
 	mux.HandleFunc("GET /api/v1/work-items/{id}", s.handleGetWorkItem)
 	mux.HandleFunc("PATCH /api/v1/work-items/{id}", s.handleUpdateWorkItem)
