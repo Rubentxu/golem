@@ -38,6 +38,7 @@ var vendorDenyList = []string{
 	"github.com/CycloneDX",         // SBOM parser (ADR-053)
 	"github.com/in-toto",           // Attestation verifier (ADR-054)
 	"github.com/protobom",          // SBOM interoperability (ADR-055)
+	"go.etcd.io",                   // bbolt journal adapter (ADR-045/ADR-057)
 }
 
 type violation struct {
