@@ -79,6 +79,12 @@ const (
 	EventTenantMigrationCompleted = "tenant.migration.completed.v1"
 	// tenant.migration.failed.v1: emitted on failed migration.
 	EventTenantMigrationFailed = "tenant.migration.failed.v1"
+
+	// SLO events (M8, ADR-080, REQ-SLO-003).
+	// slo.budget.burn.v1: emitted when burn rate exceeds 2x threshold.
+	EventSLOBudgetBurn = "slo.budget.burn.v1"
+	// slo.budget.exhausted.v1: emitted when error budget is > 90% exhausted.
+	EventSLOBudgetExhausted = "slo.budget.exhausted.v1"
 )
 
 // --- Agent event payloads (M7) ---
@@ -123,6 +129,24 @@ type AgentPrincipalAuthenticatedPayload struct {
 type AgentInjectionDetectedPayload struct {
 	AttemptedContent string `json:"attempted_content"` // snippet of the injection attempt (redacted)
 	CorrelationID    string `json:"correlation_id"`
+}
+
+// SLOBudgetBurnPayload is the payload for slo.budget.burn.v1.
+type SLOBudgetBurnPayload struct {
+	SLOName     string  `json:"slo_name"`
+	BurnRate    float64 `json:"burn_rate"`
+	WindowHours int     `json:"window_hours"`
+	BudgetLeft  float64 `json:"budget_left"`  // fraction of budget remaining
+	ErrorRate   float64 `json:"error_rate"`   // observed error rate
+	AllowedRate float64 `json:"allowed_rate"` // allowed error rate
+}
+
+// SLOBudgetExhaustedPayload is the payload for slo.budget.exhausted.v1.
+type SLOBudgetExhaustedPayload struct {
+	SLOName         string  `json:"slo_name"`
+	BudgetConsumed  float64 `json:"budget_consumed"`  // fraction 0..1
+	BudgetRemaining float64 `json:"budget_remaining"` // fraction 0..1
+	WindowHours     int     `json:"window_hours"`
 }
 
 // Actor identifies who or what performed an action. Actor and tenant are
