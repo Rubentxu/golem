@@ -20,6 +20,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/Rubentxu/golem/internal/agent/observability"
+	"github.com/Rubentxu/golem/internal/behavior"
 	"github.com/Rubentxu/golem/internal/clock"
 	"github.com/Rubentxu/golem/internal/ids"
 	"github.com/Rubentxu/golem/internal/ports"
@@ -96,6 +98,9 @@ type HarnessOptions struct {
 	Tools []ports.Tool
 	// PolicyEvaluator for agent proposals.
 	PolicyEvaluator ports.PolicyEvaluator
+	// Behavior is the agentic behavior to invoke in stepWhen.
+	// Must be non-nil for agentic behavior evals.
+	Behavior *behavior.Behavior
 }
 
 // DefaultHarnessOptions returns the standard options.
@@ -225,13 +230,88 @@ func (h *Harness) stepGiven(ctx context.Context, fixture Fixture) (Step, *Result
 func (h *Harness) stepWhen(ctx context.Context, fixture Fixture) (Step, *Result, error) {
 	// The When step is where the agent produces a proposal.
 	// For the harness, this means calling the behavior handler.
-	// In a real run, this would invoke the Agentic handler.
-	// For the harness test, we just record that it ran.
-	log.Printf("agent harness[%s]: when step complete", fixture.ID)
+	// If Behavior is not set (nil), fall back to the old behaviour: log and advance.
+	b := h.options.Behavior
+	if b == nil || b.AgenticH == nil {
+		log.Printf("agent harness[%s]: when step (no behavior set, skipping)", fixture.ID)
+		if err := h.checkpointSave(ctx, fixture.ID, StepThen); err != nil {
+			return StepRolledBack, nil, fmt.Errorf("save step then: %w", err)
+		}
+		return StepThen, nil, nil
+	}
+
+	// Construct AgenticContext from fixture Frame and harness options.
+	agenticCtx := &behavior.AgenticContext{
+		LLM:         h.options.LLMProvider,
+		Tools:       h.options.Tools,
+		Frame:       fixture.Input.Frame,
+		Budget:      fixture.Input.Frame.Budget,
+		Redactor:    observability.NewRedactor(),
+		Tracer:      nil, // harness does not emit OTel spans
+		Journal:     h.options.JournalStore,
+		Clock:       h.options.Clock,
+		IDGenerator: h.options.IDGenerator,
+		TenantID:    ports.TenantID(fixture.Input.Frame.TenantID),
+	}
+
+	// Derive event type from scenario_id prefix (e.g. "s-security-001" → "vulnerability.detected.v1").
+	eventType := scenarioIDToEventType(fixture.Input.ScenarioID)
+
+	// Construct the scenario event payload from fixture input.
+	payloadBytes, _ := json.Marshal(fixture.Input)
+
+	event := ports.RawEvent{
+		EventType:     eventType,
+		TenantID:      fixture.Input.Frame.TenantID,
+		SchemaVersion: 1,
+		OccurredAt:    h.options.Clock.Now(),
+		Actor:         ports.Actor{Type: "scenario", ID: fixture.Input.ScenarioID},
+		CorrelationID: h.options.IDGenerator.NewID(),
+		Payload:       payloadBytes,
+	}
+
+	// Invoke the real agent behavior.
+	output, err := b.AgenticH(ctx, event, agenticCtx)
+	if err != nil {
+		return StepRolledBack, &Result{
+			EvalID:         h.options.IDGenerator.NewID(),
+			RollbackReason: string(RollbackLLMError),
+		}, fmt.Errorf("agentic handler: %w", err)
+	}
+
+	var proposalID string
+	if len(output.Proposals) > 0 {
+		proposalID = output.Proposals[0].Title
+	}
+	log.Printf("agent harness[%s]: when step complete (proposal=%s)", fixture.ID, proposalID)
 	if err := h.checkpointSave(ctx, fixture.ID, StepThen); err != nil {
 		return StepRolledBack, nil, fmt.Errorf("save step then: %w", err)
 	}
 	return StepThen, nil, nil
+}
+
+// scenarioIDToEventType derives an event type string from a scenario ID.
+// e.g. "s-security-001" → "vulnerability.detected.v1"
+// This is a convenience mapping; the full mapping lives in the scenario registry.
+func scenarioIDToEventType(scenarioID string) string {
+	switch {
+	case len(scenarioID) >= 2 && scenarioID[:2] == "s-":
+		rest := scenarioID[2:]
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == '-' {
+				prefix := rest[:i]
+				switch prefix {
+				case "security":
+					return "vulnerability.detected.v1"
+				case "uat":
+					return "requirement.defined.v1"
+				case "release":
+					return "release.candidate.v1"
+				}
+			}
+		}
+	}
+	return "scenario.triggered.v1"
 }
 
 // stepThen validates the outcome against expected.
