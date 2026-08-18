@@ -31,7 +31,8 @@ const OntologySchemaJSON = `{
         "SBOM", "Component", "Vulnerability", "VEXStatement", "Attestation", "Signature",
         "Environment", "Deployment", "ServiceInstance",
         "System", "Container", "Component", "ADR",
-        "Policy", "PolicyDecision", "Approval", "Principal"
+        "Policy", "PolicyDecision", "Approval", "Principal",
+        "AgentEval", "AgentRun", "AgentEvalReport"
       ]
     },
     "edge_type_enum": {
@@ -40,7 +41,8 @@ const OntologySchemaJSON = `{
         "IMPLEMENTS", "VERIFIES", "DEPENDS_ON", "CONTAINS", "BUILT_BY",
         "PRODUCED", "DERIVED_FROM", "HAS_SBOM", "ATTESTED_BY", "SIGNED_BY",
         "AFFECTED_BY", "MITIGATED_BY", "RELEASED_AS", "DEPLOYED_TO",
-        "OWNED_BY", "APPROVED_BY", "CAUSED_BY", "EVIDENCED_BY"
+        "OWNED_BY", "APPROVED_BY", "CAUSED_BY", "EVIDENCED_BY",
+        "EVALUATED", "OBSERVED"
       ]
     }
   },

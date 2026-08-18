@@ -40,6 +40,9 @@ const (
 	EventProposalRejected   = "proposal.rejected.v1"
 	EventProposalConflicted = "proposal.conflicted.v1"
 	EventProposalApplied    = "proposal.applied.v1"
+
+	// Agent eval events (M7, ADR-067).
+	EventAgentEvalCompleted = "agent.eval.completed.v1"
 )
 
 // Actor identifies who or what performed an action. Actor and tenant are
