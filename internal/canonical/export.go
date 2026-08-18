@@ -64,6 +64,12 @@ func (e *Exporter) Export(ctx context.Context) (Manifest, error) {
 	}
 	manifest.SetCounts(uint64(len(nodes)), uint64(len(edges)))
 
+	// Collect AgentEval nodes for Manifest.Extensions["agent_evals"] (REQ-011, ADR-067).
+	agentEvals := e.collectAgentEvalNodes(nodes)
+	if len(agentEvals) > 0 {
+		manifest.Extensions["agent_evals"] = agentEvals
+	}
+
 	// Pre-compute all digests before writing any files.
 	nodesData, nodesDigest, err := encodeJSONL(nodes)
 	if err != nil {
@@ -145,6 +151,18 @@ func (e *Exporter) collectNodes(ctx context.Context) ([]CanonicalNode, error) {
 		})
 	}
 	return result, nil
+}
+
+// collectAgentEvalNodes filters the given nodes for AgentEval kind and returns
+// them as CanonicalNode for inclusion in Manifest.Extensions["agent_evals"].
+func (e *Exporter) collectAgentEvalNodes(nodes []CanonicalNode) []CanonicalNode {
+	var result []CanonicalNode
+	for _, n := range nodes {
+		if n.Kind == AgentEvalNodeKind {
+			result = append(result, n)
+		}
+	}
+	return result
 }
 
 // collectEdges enumerates all edges for the tenant using ListEdges and converts to canonical format.
