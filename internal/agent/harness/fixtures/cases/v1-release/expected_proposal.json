@@ -1,0 +1,27 @@
+{
+  "release_id": "release-libfoo-1.0.0",
+  "version": "1.0.0",
+  "status": "candidate",
+  "artifact": {
+    "id": "artifact-libfoo-1.0.0",
+    "purl": "pkg:generic/libfoo@1.0.0"
+  },
+  "vex_statements": [
+    {
+      "id": "vex-libfoo-001",
+      "cve_id": "CVE-2025-1234",
+      "state": "fixed",
+      "justification": "Version 1.0.1 includes security patch"
+    }
+  ],
+  "attestations": [
+    {
+      "kind": "SBOMAttestation",
+      "signed": true
+    },
+    {
+      "kind": "VEXAttestation",
+      "signed": true
+    }
+  ]
+}

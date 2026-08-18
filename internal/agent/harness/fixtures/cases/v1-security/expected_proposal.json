@@ -1,0 +1,36 @@
+{
+  "cve_id": "CVE-2025-1234",
+  "purl": "pkg:generic/libfoo@1.0.0",
+  "severity": "high",
+  "affected_components": [
+    {
+      "purl": "pkg:generic/libfoo@1.0.0",
+      "name": "libfoo",
+      "version": "1.0.0"
+    }
+  ],
+  "sbom": {
+    "version": "1.0",
+    "metadata": {
+      "tool": "syft",
+      "created": "2025-08-01T00:00:00Z"
+    },
+    "components": [
+      {
+        "purl": "pkg:generic/libfoo@1.0.0",
+        "name": "libfoo",
+        "version": "1.0.0",
+        "type": "library"
+      }
+    ]
+  },
+  "artifact": {
+    "id": "artifact-libfoo-1.0.0",
+    "purl": "pkg:generic/libfoo@1.0.0",
+    "release": {
+      "id": "release-libfoo-1.0.0",
+      "version": "1.0.0",
+      "status": "candidate"
+    }
+  }
+}

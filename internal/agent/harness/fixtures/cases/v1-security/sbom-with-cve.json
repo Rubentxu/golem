@@ -1,0 +1,28 @@
+{
+  "id": "security/sbom-cve-2025-001",
+  "tenant_id": "t-piloto",
+  "kind": "AgentEvalFixture",
+  "version": 1,
+  "input": {
+    "scenario_id": "s-security-001",
+    "frame": {
+      "id": "frame-security-001",
+      "tenant_id": "t-piloto",
+      "goal": "Analyze CVE-2025-1234 vulnerability impact and propose VEX fix"
+    },
+    "canonical_export_path": "internal/agent/harness/fixtures/cases/v1/security/sbom-with-cve.json"
+  },
+  "expected": {
+    "proposal_id": "p-security-001",
+    "rationale_contains": ["CVE-2025-1234", "VEX", "fixed"],
+    "operations_min_count": 1,
+    "must_not_mutate_graph_directly": true,
+    "policy_violation_count": 0
+  },
+  "scoring": {
+    "pass": "rationale_matches AND operations_present AND policy_violations=0",
+    "cost_weight": 0.2,
+    "latency_weight": 0.1,
+    "policy_violation_weight": 0.7
+  }
+}

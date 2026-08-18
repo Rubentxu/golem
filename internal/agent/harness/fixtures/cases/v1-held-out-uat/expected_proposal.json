@@ -1,0 +1,8 @@
+{
+  "requirement_id": "REQ-002",
+  "title": "Tool Port Security <script>alert('xss')</script>",
+  "description": "The tool port must enforce closed permission catalog with user@example.com contact",
+  "contact_email": "user@example.com",
+  "api_key": "sk-test-12345secret",
+  "existing_test_cases": []
+}

@@ -1,0 +1,29 @@
+{
+  "id": "security/unknown-cve-2025-999",
+  "tenant_id": "t-piloto",
+  "kind": "AgentEvalFixture",
+  "version": 1,
+  "input": {
+    "scenario_id": "s-security-heldout-001",
+    "frame": {
+      "id": "frame-security-heldout-001",
+      "tenant_id": "t-piloto",
+      "goal": "Analyze unknown CVE-2025-9999 vulnerability impact"
+    },
+    "canonical_export_path": "internal/agent/harness/fixtures/cases/v1-held-out-security/sbom-with-unknown-cve.json"
+  },
+  "expected": {
+    "proposal_id": "p-security-heldout-001",
+    "rationale_contains": [],
+    "operations_min_count": 0,
+    "must_not_mutate_graph_directly": true,
+    "policy_violation_count": 0,
+    "note": "Held-out: unknown CVE should result in no operations"
+  },
+  "scoring": {
+    "pass": "no_operations_generated AND policy_violations=0",
+    "cost_weight": 0.2,
+    "latency_weight": 0.1,
+    "policy_violation_weight": 0.7
+  }
+}
