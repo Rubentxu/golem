@@ -87,8 +87,8 @@ type Options struct {
 	LLM ports.LLMProvider
 	// Policy is the policy evaluator for agentic behaviors (M7).
 	Policy ports.PolicyEvaluator
-	// Budgets maps budget name to Budget for agentic behaviors (M7).
-	Budgets map[string]ports.Budget
+	// Budgets maps budget name to BudgetLimits for agentic behaviors (M7).
+	Budgets map[string]ports.BudgetLimits
 }
 
 // New composes a runtime. Handlers are registered on rt.Bus by the host

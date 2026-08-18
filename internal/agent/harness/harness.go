@@ -68,6 +68,8 @@ type Result struct {
 	Pass             bool       `json:"pass"`
 	EvalID           string     `json:"eval_id"`           // unique eval run ID
 	ProposalID       string     `json:"proposal_id"`       // proposed proposal ID (if any)
+	Rationale        string     `json:"rationale"`         // handler-provided rationale
+	OpCount          int        `json:"op_count"`          // number of operations generated
 	CostUSD          float64    `json:"cost_usd"`          // observed cost
 	LatencyMs        int64      `json:"latency_ms"`        // wall-clock ms
 	PolicyViolations int        `json:"policy_violations"` // policy violation count
@@ -230,14 +232,14 @@ func (h *Harness) stepGiven(ctx context.Context, fixture Fixture) (Step, *Result
 func (h *Harness) stepWhen(ctx context.Context, fixture Fixture) (Step, *Result, error) {
 	// The When step is where the agent produces a proposal.
 	// For the harness, this means calling the behavior handler.
-	// If Behavior is not set (nil), fall back to the old behaviour: log and advance.
+	// If Behavior is not set (nil), return rollback with explicit reason.
 	b := h.options.Behavior
 	if b == nil || b.AgenticH == nil {
-		log.Printf("agent harness[%s]: when step (no behavior set, skipping)", fixture.ID)
-		if err := h.checkpointSave(ctx, fixture.ID, StepThen); err != nil {
-			return StepRolledBack, nil, fmt.Errorf("save step then: %w", err)
-		}
-		return StepThen, nil, nil
+		log.Printf("agent harness[%s]: when step (no behavior set, rolling back)", fixture.ID)
+		return StepRolledBack, &Result{
+			EvalID:         h.options.IDGenerator.NewID(),
+			RollbackReason: string(RollbackNoAgenticHandler),
+		}, nil
 	}
 
 	// Construct AgenticContext from fixture Frame and harness options.
@@ -279,15 +281,27 @@ func (h *Harness) stepWhen(ctx context.Context, fixture Fixture) (Step, *Result,
 		}, fmt.Errorf("agentic handler: %w", err)
 	}
 
-	var proposalID string
+	// Build result with handler output propagated.
+	var proposalID, rationale string
+	var opCount int
 	if len(output.Proposals) > 0 {
 		proposalID = output.Proposals[0].Title
+		rationale = output.Proposals[0].Body
+		opCount = len(output.Proposals)
 	}
+
+	result := &Result{
+		EvalID:     h.options.IDGenerator.NewID(),
+		ProposalID: proposalID,
+		Rationale:  rationale,
+		OpCount:    opCount,
+	}
+
 	log.Printf("agent harness[%s]: when step complete (proposal=%s)", fixture.ID, proposalID)
 	if err := h.checkpointSave(ctx, fixture.ID, StepThen); err != nil {
 		return StepRolledBack, nil, fmt.Errorf("save step then: %w", err)
 	}
-	return StepThen, nil, nil
+	return StepThen, result, nil
 }
 
 // scenarioIDToEventType derives an event type string from a scenario ID.

@@ -35,12 +35,17 @@ type LLMProviderCapabilities struct {
 	Audit bool
 }
 
+// LLMMessage is one turn in a multi-turn LLM conversation (ADR-061, C4).
+type LLMMessage struct {
+	Role    string `json:"role"`    // "system" | "user" | "assistant"
+	Content string `json:"content"` // already redacted by caller (Redactor.Redact)
+}
+
 // LLMRequest is the input to LLMProvider.Complete (ADR-061).
 type LLMRequest struct {
-	TenantID string `json:"tenant_id"` // mandatory
-	Prompt   string `json:"prompt"`    // mandatory
-	// Model is the target model (provider-specific identifier).
-	Model string `json:"model,omitempty"`
+	TenantID string       `json:"tenant_id"` // mandatory
+	Messages []LLMMessage `json:"messages"`  // ordered, oldest first; replaces Prompt field
+	Model    string       `json:"model,omitempty"`
 }
 
 // LLMResponse is the output from LLMProvider.Complete (ADR-061).

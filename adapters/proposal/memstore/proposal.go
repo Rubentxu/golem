@@ -53,7 +53,7 @@ func (s *Store) List(ctx context.Context, tenantID string) ([]ports.Proposal, er
 	defer s.mu.RUnlock()
 	var result []ports.Proposal
 	for _, p := range s.props {
-		if p.TenantID == tenantID {
+		if p.TenantID == ports.TenantID(tenantID) {
 			result = append(result, p)
 		}
 	}

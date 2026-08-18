@@ -53,7 +53,9 @@ func ObservableComplete(
 	})
 
 	// Redact prompt before it enters any log or span attribute (ADR-066).
-	promptSummary := observability.NewRedactor().Redact(req.Prompt)
+	// Extract user message content from messages for redaction.
+	promptContent := extractUserContent(req.Messages)
+	promptSummary := observability.NewRedactor().Redact(promptContent)
 
 	resp, err := adapter.Complete(ctx, req)
 

@@ -47,7 +47,7 @@ func TestAgentPrincipal_Claims(t *testing.T) {
 
 	claims := agent.AgentClaims{
 		LLMCapabilities:   ports.LLMProviderCapabilities{NoRetention: true, Region: "us-east-1", Audit: true},
-		ToolPermissions:   []string{ports.PermissionRead},
+		ToolPermissions:   []ports.Permission{ports.PermissionGraphRead},
 		EvaluationEnabled: true,
 	}
 	ap.SetClaims(claims)
@@ -59,7 +59,7 @@ func TestAgentPrincipal_Claims(t *testing.T) {
 	if got.LLMCapabilities.Region != "us-east-1" {
 		t.Errorf("expected Region us-east-1, got %q", got.LLMCapabilities.Region)
 	}
-	if len(got.ToolPermissions) != 1 || got.ToolPermissions[0] != ports.PermissionRead {
+	if len(got.ToolPermissions) != 1 || got.ToolPermissions[0] != ports.PermissionGraphRead {
 		t.Errorf("unexpected ToolPermissions: %v", got.ToolPermissions)
 	}
 }

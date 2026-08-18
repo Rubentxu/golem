@@ -23,11 +23,15 @@ type PolicyEvaluator interface {
 	Evaluate(ctx context.Context, action Action) (Decision, error)
 }
 
-// Action represents an action to be evaluated by PolicyEvaluator.
+// Action represents an action to be evaluated by PolicyEvaluator (ADR-063, C4).
 type Action struct {
-	Actor  Actor
-	Target string
-	Type   string // "read", "write", "delete", "propose", "execute"
+	Type         string     // "graph.read" | "graph.write" | "proposal.write" | "proposal.apply" | "evidence.write" | "tool.invoke" | "frame.start" | "budget.deduct"
+	Actor        Actor      // who is performing the action
+	TenantID     TenantID   // tenant scope for the action
+	Target       string     // node ID, edge ID, tool ID, etc.
+	Permission   Permission // permission required for this action (from closed catalog)
+	FrameID      string     // frame scope, if any
+	EvidenceRefs []string   // evidence attached to this action
 }
 
 // Decision represents the result of policy evaluation (ADR-063).

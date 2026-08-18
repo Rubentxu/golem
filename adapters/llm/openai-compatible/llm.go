@@ -52,10 +52,8 @@ func (a *Adapter) Complete(ctx context.Context, req ports.LLMRequest) (ports.LLM
 	url := fmt.Sprintf("%s/chat/completions", a.baseURL)
 
 	payload := map[string]any{
-		"model": req.Model,
-		"messages": []map[string]string{
-			{"role": "user", "content": req.Prompt},
-		},
+		"model":    req.Model,
+		"messages": req.Messages,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -152,4 +150,14 @@ type openaiResponse struct {
 		CompletionTokens int `json:"completion_tokens"`
 		TotalTokens      int `json:"total_tokens"`
 	} `json:"usage"`
+}
+
+// extractUserContent extracts the first user message content from messages.
+func extractUserContent(messages []ports.LLMMessage) string {
+	for _, m := range messages {
+		if m.Role == "user" {
+			return m.Content
+		}
+	}
+	return ""
 }

@@ -91,7 +91,7 @@ func uatAgentHandler(llm ports.LLMProvider, redact *observability.Redactor) beha
 		// Call LLM
 		resp, err := llm.Complete(ctx, ports.LLMRequest{
 			TenantID: string(agent.TenantID),
-			Prompt:   promptBody,
+			Messages: []ports.LLMMessage{{Role: "user", Content: promptBody}},
 			Model:    "golem-uat-v1",
 		})
 		if err != nil {

@@ -32,7 +32,7 @@ func (s *mockProposalStore) Get(ctx context.Context, id string) (ports.Proposal,
 func (s *mockProposalStore) List(ctx context.Context, tenantID string) ([]ports.Proposal, error) {
 	var result []ports.Proposal
 	for _, p := range s.proposals {
-		if p.TenantID == tenantID {
+		if p.TenantID == ports.TenantID(tenantID) {
 			result = append(result, p)
 		}
 	}
@@ -92,7 +92,7 @@ func TestProposeHandler_CreatesProposal(t *testing.T) {
 	if events[0].EventType != ports.EventProposalProposed {
 		t.Errorf("expected event type %s, got %s", ports.EventProposalProposed, events[0].EventType)
 	}
-	if store.proposals["p-001"].Status != ports.ProposalStatusProposed {
+	if store.proposals["p-001"].Status != string(ports.ProposalStatusProposed) {
 		t.Errorf("expected status proposed, got %s", store.proposals["p-001"].Status)
 	}
 }
@@ -102,7 +102,7 @@ func TestApproveHandler_TransitionsToApproved(t *testing.T) {
 	store.proposals["p-001"] = ports.Proposal{
 		ID:       "p-001",
 		TenantID: "t-test",
-		Status:   ports.ProposalStatusProposed,
+		Status:   string(ports.ProposalStatusProposed),
 		Revision: 1,
 	}
 	clk := clock.SystemClock{}
@@ -130,7 +130,7 @@ func TestApproveHandler_TransitionsToApproved(t *testing.T) {
 	if events[0].EventType != ports.EventProposalApproved {
 		t.Errorf("expected %s, got %s", ports.EventProposalApproved, events[0].EventType)
 	}
-	if store.proposals["p-001"].Status != ports.ProposalStatusApproved {
+	if store.proposals["p-001"].Status != string(ports.ProposalStatusApproved) {
 		t.Errorf("expected approved, got %s", store.proposals["p-001"].Status)
 	}
 }
@@ -140,7 +140,7 @@ func TestApproveHandler_PolicyDenied(t *testing.T) {
 	store.proposals["p-001"] = ports.Proposal{
 		ID:       "p-001",
 		TenantID: "t-test",
-		Status:   ports.ProposalStatusProposed,
+		Status:   string(ports.ProposalStatusProposed),
 		Revision: 1,
 	}
 	clk := clock.SystemClock{}
@@ -169,7 +169,7 @@ func TestRejectHandler_TransitionsToRejected(t *testing.T) {
 	store.proposals["p-001"] = ports.Proposal{
 		ID:       "p-001",
 		TenantID: "t-test",
-		Status:   ports.ProposalStatusProposed,
+		Status:   string(ports.ProposalStatusProposed),
 		Revision: 1,
 	}
 	clk := clock.SystemClock{}
@@ -197,7 +197,7 @@ func TestRejectHandler_TransitionsToRejected(t *testing.T) {
 	if events[0].EventType != ports.EventProposalRejected {
 		t.Errorf("expected %s, got %s", ports.EventProposalRejected, events[0].EventType)
 	}
-	if store.proposals["p-001"].Status != ports.ProposalStatusRejected {
+	if store.proposals["p-001"].Status != string(ports.ProposalStatusRejected) {
 		t.Errorf("expected rejected, got %s", store.proposals["p-001"].Status)
 	}
 }
@@ -207,7 +207,7 @@ func TestApplyHandler_AppliesApprovedProposal(t *testing.T) {
 	store.proposals["p-001"] = ports.Proposal{
 		ID:       "p-001",
 		TenantID: "t-test",
-		Status:   ports.ProposalStatusApproved,
+		Status:   string(ports.ProposalStatusApproved),
 		Revision: 2,
 	}
 	clk := clock.SystemClock{}
@@ -236,7 +236,7 @@ func TestApplyHandler_AppliesApprovedProposal(t *testing.T) {
 	if events[0].EventType != ports.EventProposalApplied {
 		t.Errorf("expected %s, got %s", ports.EventProposalApplied, events[0].EventType)
 	}
-	if store.proposals["p-001"].Status != ports.ProposalStatusApplied {
+	if store.proposals["p-001"].Status != string(ports.ProposalStatusApplied) {
 		t.Errorf("expected applied, got %s", store.proposals["p-001"].Status)
 	}
 }
@@ -246,7 +246,7 @@ func TestApplyHandler_VersionConflict(t *testing.T) {
 	store.proposals["p-001"] = ports.Proposal{
 		ID:       "p-001",
 		TenantID: "t-test",
-		Status:   ports.ProposalStatusApproved,
+		Status:   string(ports.ProposalStatusApproved),
 		Revision: 3, // expected 2 but actual is 3
 	}
 	clk := clock.SystemClock{}
@@ -276,7 +276,7 @@ func TestConflictHandler_EmitsConflictedEvent(t *testing.T) {
 	store.proposals["p-001"] = ports.Proposal{
 		ID:       "p-001",
 		TenantID: "t-test",
-		Status:   ports.ProposalStatusApproved,
+		Status:   string(ports.ProposalStatusApproved),
 		Revision: 2,
 	}
 	h := ConflictHandler(store)

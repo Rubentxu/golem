@@ -17,7 +17,7 @@ func TestMemStore_DeterministicReplay(t *testing.T) {
 
 	req := ports.LLMRequest{
 		TenantID: "t-test",
-		Prompt:   "What is 2+2?",
+		Messages: []ports.LLMMessage{{Role: "user", Content: "What is 2+2?"}},
 	}
 
 	// First call
@@ -68,12 +68,12 @@ func TestMemStore_Capabilities(t *testing.T) {
 	}
 }
 
-// TestMemStore_InvalidRequest verifies that empty prompt returns error.
+// TestMemStore_InvalidRequest verifies that empty messages returns error.
 func TestMemStore_InvalidRequest(t *testing.T) {
 	store := New(nil)
 	req := ports.LLMRequest{
 		TenantID: "t-test",
-		Prompt:   "",
+		Messages: []ports.LLMMessage{},
 	}
 	_, err := store.Complete(context.Background(), req)
 	if err != ports.ErrInvalidLLMRequest {
@@ -86,7 +86,7 @@ func TestMemStore_MissingResponse(t *testing.T) {
 	store := New(nil)
 	req := ports.LLMRequest{
 		TenantID: "t-test",
-		Prompt:   "What is 3+3?",
+		Messages: []ports.LLMMessage{{Role: "user", Content: "What is 3+3?"}},
 	}
 	_, err := store.Complete(context.Background(), req)
 	if err != ports.ErrProviderUnavailable {

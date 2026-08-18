@@ -47,21 +47,23 @@ func ApplyProposalHandler(
 		if err != nil {
 			return nil, proposal.ErrProposalNotFound
 		}
-		if current.TenantID != p.TenantID {
+		if current.TenantID != ports.TenantID(p.TenantID) {
 			return nil, proposal.ErrProposalNotFound
 		}
 
 		// Only approved proposals can be applied
-		if current.Status != ports.ProposalStatusApproved {
+		if current.Status != string(ports.ProposalStatusApproved) {
 			return nil, fmt.Errorf("%w: cannot apply proposal in status %s",
 				proposal.ErrInvalidStatusTransition, current.Status)
 		}
 
 		// Policy gate before any mutation
 		action := ports.Action{
-			Actor:  p.Actor,
-			Target: "proposal:" + p.ProposalID,
-			Type:   "apply",
+			Type:       "proposal.apply",
+			Actor:      p.Actor,
+			TenantID:   ports.TenantID(p.TenantID),
+			Target:     "proposal:" + p.ProposalID,
+			Permission: ports.PermissionProposalApply,
 		}
 		decision, err := policy.Evaluate(ctx, action)
 		if err != nil {

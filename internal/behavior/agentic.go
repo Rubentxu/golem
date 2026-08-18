@@ -31,7 +31,7 @@ type AgenticContext struct {
 	// Frame is the execution frame (tenant, goal, permissions, budget).
 	Frame ports.Frame
 	// Budget is the budget for this run (enforced at port boundary).
-	Budget ports.Budget
+	Budget ports.BudgetLimits
 	// Redactor redacts PII from prompts and responses before they enter
 	// any log or journal (ADR-066).
 	Redactor *observability.Redactor

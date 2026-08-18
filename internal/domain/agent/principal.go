@@ -25,7 +25,7 @@ type AgentPrincipal struct {
 // AgentClaims holds agent-specific claims (e.g., capabilities, permissions).
 type AgentClaims struct {
 	LLMCapabilities   ports.LLMProviderCapabilities
-	ToolPermissions   []string
+	ToolPermissions   []ports.Permission
 	EvaluationEnabled bool
 }
 

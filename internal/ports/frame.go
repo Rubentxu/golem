@@ -9,10 +9,10 @@ type Frame struct {
 	TenantID    string            `json:"tenant_id"`
 	Goal        string            `json:"goal,omitempty"`
 	Constraints map[string]string `json:"constraints,omitempty"`
-	Permissions []string          `json:"permissions,omitempty"`
+	Permissions []Permission      `json:"permissions,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
 	// Budget constrains resource usage for this frame (ADR-069, M8 I-1).
-	Budget Budget `json:"budget,omitempty"`
+	Budget BudgetLimits `json:"budget,omitempty"`
 }
 
 // Validate checks that all permissions are in the closed catalog (ADR-058)
@@ -27,12 +27,12 @@ func (f Frame) Validate() error {
 	if f.Goal == "" {
 		return fmt.Errorf("frame: goal is mandatory")
 	}
-	known := map[string]bool{
-		"graph.read":      true,
-		"graph.read:lens": true,
-		"proposal.write":  true,
-		"proposal.apply":  true,
-		"evidence.write":  true,
+	known := map[Permission]bool{
+		PermissionGraphRead:     true,
+		PermissionGraphReadLens: true,
+		PermissionProposalWrite: true,
+		PermissionProposalApply: true,
+		PermissionEvidenceWrite: true,
 	}
 	for _, perm := range f.Permissions {
 		if !known[perm] {

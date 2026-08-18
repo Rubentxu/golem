@@ -97,8 +97,8 @@ func ProposeHandler(store ports.ProposalStore, gen ports.IDGenerator, clock port
 
 		proposal := ports.Proposal{
 			ID:         id,
-			TenantID:   p.TenantID,
-			Status:     ports.ProposalStatusProposed,
+			TenantID:   ports.TenantID(p.TenantID),
+			Status:     string(ports.ProposalStatusProposed),
 			TargetSpec: p.TargetSpec,
 			Operations: p.Operations,
 			Revision:   1,
@@ -146,18 +146,20 @@ func ApproveHandler(store ports.ProposalStore, policy ports.PolicyEvaluator, clo
 			}
 			return nil, fmt.Errorf("proposal store get: %w", err)
 		}
-		if proposal.TenantID != p.TenantID {
+		if proposal.TenantID != ports.TenantID(p.TenantID) {
 			return nil, ErrProposalNotFound
 		}
-		if proposal.Status != ports.ProposalStatusProposed {
+		if proposal.Status != string(ports.ProposalStatusProposed) {
 			return nil, fmt.Errorf("%w: cannot approve proposal in status %s", ErrInvalidStatusTransition, proposal.Status)
 		}
 
 		// Policy gate: agent proposals require explicit ALLOW
 		action := ports.Action{
-			Actor:  p.Actor,
-			Target: "proposal:" + p.ProposalID,
-			Type:   "approve",
+			Type:       "proposal.approve",
+			Actor:      p.Actor,
+			TenantID:   ports.TenantID(p.TenantID),
+			Target:     "proposal:" + p.ProposalID,
+			Permission: ports.PermissionProposalApply,
 		}
 		decision, err := policy.Evaluate(ctx, action)
 		if err != nil {
@@ -167,12 +169,12 @@ func ApproveHandler(store ports.ProposalStore, policy ports.PolicyEvaluator, clo
 			return nil, ErrPolicyDenied
 		}
 
-		proposal.Status = ports.ProposalStatusApproved
+		proposal.Status = string(ports.ProposalStatusApproved)
 		proposal.ApprovedBy = p.Actor
 		proposal.ApprovedAt = clock.Now().UTC().Format("2006-01-02T15:04:05Z")
 		proposal.Revision++
 
-		if err := store.UpdateStatus(ctx, p.ProposalID, proposal.Revision-1, ports.ProposalStatusApproved); err != nil {
+		if err := store.UpdateStatus(ctx, p.ProposalID, proposal.Revision-1, string(ports.ProposalStatusApproved)); err != nil {
 			return nil, fmt.Errorf("proposal store update: %w", err)
 		}
 
@@ -214,19 +216,19 @@ func RejectHandler(store ports.ProposalStore, clock ports.Clock) appcmd.Handler 
 		if err != nil {
 			return nil, ErrProposalNotFound
 		}
-		if proposal.TenantID != p.TenantID {
+		if proposal.TenantID != ports.TenantID(p.TenantID) {
 			return nil, ErrProposalNotFound
 		}
-		if proposal.Status != ports.ProposalStatusProposed {
+		if proposal.Status != string(ports.ProposalStatusProposed) {
 			return nil, fmt.Errorf("%w: cannot reject proposal in status %s", ErrInvalidStatusTransition, proposal.Status)
 		}
 
-		proposal.Status = ports.ProposalStatusRejected
+		proposal.Status = string(ports.ProposalStatusRejected)
 		proposal.RejectedBy = p.Actor
 		proposal.RejectedAt = clock.Now().UTC().Format("2006-01-02T15:04:05Z")
 		proposal.Revision++
 
-		if err := store.UpdateStatus(ctx, p.ProposalID, proposal.Revision-1, ports.ProposalStatusRejected); err != nil {
+		if err := store.UpdateStatus(ctx, p.ProposalID, proposal.Revision-1, string(ports.ProposalStatusRejected)); err != nil {
 			return nil, fmt.Errorf("proposal store update: %w", err)
 		}
 
@@ -271,10 +273,10 @@ func ApplyHandler(store ports.ProposalStore, policy ports.PolicyEvaluator, clock
 		if err != nil {
 			return nil, ErrProposalNotFound
 		}
-		if proposal.TenantID != p.TenantID {
+		if proposal.TenantID != ports.TenantID(p.TenantID) {
 			return nil, ErrProposalNotFound
 		}
-		if proposal.Status != ports.ProposalStatusApproved {
+		if proposal.Status != string(ports.ProposalStatusApproved) {
 			return nil, fmt.Errorf("%w: cannot apply proposal in status %s", ErrInvalidStatusTransition, proposal.Status)
 		}
 		if p.ExpectedVersion > 0 && proposal.Revision != p.ExpectedVersion {
@@ -284,9 +286,11 @@ func ApplyHandler(store ports.ProposalStore, policy ports.PolicyEvaluator, clock
 		// Policy gate: evaluate "proposal.apply" before mutating.
 		// If policy denies, do NOT apply — return error without UpdateStatus.
 		action := ports.Action{
-			Actor:  p.Actor,
-			Target: "proposal:" + p.ProposalID,
-			Type:   "proposal.apply",
+			Type:       "proposal.apply",
+			Actor:      p.Actor,
+			TenantID:   ports.TenantID(p.TenantID),
+			Target:     "proposal:" + p.ProposalID,
+			Permission: ports.PermissionProposalApply,
 		}
 		decision, err := policy.Evaluate(ctx, action)
 		if err != nil {
@@ -296,11 +300,11 @@ func ApplyHandler(store ports.ProposalStore, policy ports.PolicyEvaluator, clock
 			return nil, ErrPolicyDenied
 		}
 
-		proposal.Status = ports.ProposalStatusApplied
+		proposal.Status = string(ports.ProposalStatusApplied)
 		proposal.AppliedAt = clock.Now().UTC().Format("2006-01-02T15:04:05Z")
 		proposal.Revision++
 
-		if err := store.UpdateStatus(ctx, p.ProposalID, proposal.Revision-1, ports.ProposalStatusApplied); err != nil {
+		if err := store.UpdateStatus(ctx, p.ProposalID, proposal.Revision-1, string(ports.ProposalStatusApplied)); err != nil {
 			if errors.Is(err, ports.ErrVersionConflict) {
 				return nil, ports.ErrVersionConflict
 			}
@@ -345,14 +349,14 @@ func ConflictHandler(store ports.ProposalStore) appcmd.Handler {
 		if err != nil {
 			return nil, ErrProposalNotFound
 		}
-		if proposal.TenantID != p.TenantID {
+		if proposal.TenantID != ports.TenantID(p.TenantID) {
 			return nil, ErrProposalNotFound
 		}
 
-		proposal.Status = ports.ProposalStatusConflicted
+		proposal.Status = string(ports.ProposalStatusConflicted)
 		proposal.Revision++
 
-		if err := store.UpdateStatus(ctx, p.ProposalID, proposal.Revision-1, ports.ProposalStatusConflicted); err != nil {
+		if err := store.UpdateStatus(ctx, p.ProposalID, proposal.Revision-1, string(ports.ProposalStatusConflicted)); err != nil {
 			// Best effort — conflict is written even if update fails
 		}
 

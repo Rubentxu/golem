@@ -80,12 +80,14 @@ const (
 	RollbackLLMError RollbackReason = "llm_error"
 	// RollbackProposalConflict indicates a proposal conflict on apply.
 	RollbackProposalConflict RollbackReason = "proposal_conflict"
+	// RollbackNoAgenticHandler indicates no agentic handler is wired.
+	RollbackNoAgenticHandler RollbackReason = "no_agentic_handler"
 )
 
 // Valid returns an error if r is not a known rollback reason.
 func (r RollbackReason) Valid() error {
 	switch r {
-	case RollbackPolicyViolation, RollbackBudgetExceeded, RollbackLLMError, RollbackProposalConflict:
+	case RollbackPolicyViolation, RollbackBudgetExceeded, RollbackLLMError, RollbackProposalConflict, RollbackNoAgenticHandler:
 		return nil
 	default:
 		return errors.New("agent harness: unknown rollback reason")
