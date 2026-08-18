@@ -131,10 +131,11 @@ func (rt *Runtime) SwapGraph(ctx context.Context, newGraph ports.GraphStore) err
 	return nil
 }
 
-// AcquireReadLock exposes the graph read lock to test code in tck/.
-// Returns a function that releases the lock when called.
-// NOT part of the public API — for test use only.
-func (rt *Runtime) AcquireReadLock() (unlock func()) {
+// AcquireReadLock acquires the graph read lock and returns a function to release it.
+// Callers MUST invoke the returned release function exactly once.
+// This is used by the swap-atomicity test in tck/ to verify that concurrent
+// readers during SwapGraph see either the old or new graph, never a partial state.
+func (rt *Runtime) AcquireReadLock() (release func()) {
 	rt.graphMu.RLock()
 	return rt.graphMu.RUnlock
 }
@@ -164,6 +165,13 @@ func (rt *Runtime) ProjectBatch(ctx context.Context, batchSize int) (int, error)
 	rt.graphMu.RLock()
 	defer rt.graphMu.RUnlock()
 
+	// Track highest checkpoint we can safely advance to: the position of the
+	// last event that was successfully applied. If any event fails (returns
+	// an error, not just applied=false), we stop advancing and let the next
+	// call retry from the last successful position. This prevents infinite
+	// retry loops while still tolerating transient "dependency not ready" cases.
+	// Event positions are from+1, from+2, ... from+len(batch) (Replay returns
+	// events with position > from, in position order).
 	savedCheckpoint := from
 	for i, env := range batch {
 		applied, err := projection.ApplyIfHandled(rt.Projector, rt.Graph, env)
@@ -173,11 +181,16 @@ func (rt *Runtime) ProjectBatch(ctx context.Context, batchSize int) (int, error)
 			return 0, fmt.Errorf("projection apply %s: %w", env.EventID, err)
 		}
 		if applied {
+			// Only advance savedCheckpoint past events that were actually applied.
+			// This is the key to avoiding infinite retry: on next call we
+			// retry from savedCheckpoint, not from the batch's last position.
 			savedCheckpoint = from + ports.StreamPosition(i) + 1
 		}
 	}
 
 	if savedCheckpoint > from {
+		// Advance checkpoint to the last successfully applied position, not to
+		// the batch's nominal last position (which may contain a failing event).
 		if err := rt.Checkpoint.Save(ctx, ProjectionCheckpoint, savedCheckpoint); err != nil {
 			return 0, fmt.Errorf("projection checkpoint save %d: %w", savedCheckpoint, err)
 		}
