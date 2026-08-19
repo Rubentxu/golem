@@ -1,35 +1,33 @@
-# NebulaGraph (benchmark candidate #2 per ADR-086)
+# NebulaGraph all-in-one — benchmark candidate #2 (ADR-086)
 #
-# NebulaGraph is a distributed graph DB. For single-node benchmarking we run
-# all three services (metad + storaged + graphd) in one container using the
-# nebula-console for orchestration.
+# Bundle all three NebulaGraph services (metad + storaged + graphd)
+# into a single container for single-node benchmark.
 #
-# Ports (single-node all-in-one layout):
-#   9669  — NebulaGraph service (Thrift)
-#   19669 — HTTP (nebula-console)
-#   7689  — internal RPC
-#
-# Health check: HTTP GET http://host:19669/status
-#
-# Note: NebulaGraph's official docker images are designed for docker-compose
-# multi-container setups. For benchmark we use a single container that
-# starts all services via Entrypoint.
+# Ports exposed:
+#   9669  — nGQL client (graphd)
+#   19669 — HTTP console
+#   9559  — metad thrift
+#   9560  — storaged thrift
 #
 # Usage:
-#   podman build -t golem-nebula:latest .
-#   podman run -d --name golem-nebula \
-#     -p 9669:9669 -p 19669:19669 -p 7689:7689 \
-#     golem-nebula:latest
+#   docker compose up -d nebula-allinone
 
 FROM docker.io/vesoft/nebula-graphd:latest
 
-EXPOSE 9669 19669 7689
+# metad and storaged binaries come from the full NebulaGraph distribution.
+# Pull from the metad image and copy only the binaries we need.
+COPY --from=docker.io/vesoft/nebula-metad:latest /usr/local/nebula/bin/nebula-metad /usr/local/nebula/bin/
+COPY --from=docker.io/vesoft/nebula-storaged:latest /usr/local/nebula/bin/nebula-storaged /usr/local/nebula/bin/
 
-# Entrypoint is already set to start graphd
-# Note: storaged and metad must be running for graphd to function.
-# For a true single-node test use:
-#   docker run --rm -it vesoft/nebula-console:latest
-#   > CREATE SPACE golem_bench (partition_num=1, replica_factor=1, vid_type=FIXED_STRING(32))
-#
-# For the benchmark harness, we assume an external nebula cluster or
-# a pre-configured single-node setup is already running.
+# Entrypoint starts all three services in sequence
+ENTRYPOINT ["/bin/bash", "-c", "\
+    echo 'Starting metad...' && \
+    /usr/local/nebula/bin/nebula-metad --flagfile=/usr/local/nebula/nebula-metad.conf --meta_server_addrs=127.0.0.1:9559 --local_config=true & \
+    sleep 3 && \
+    echo 'Starting storaged...' && \
+    /usr/local/nebula/bin/nebula-storaged --flagfile=/usr/local/nebula/nebula-storaged.conf --meta_server_addrs=127.0.0.1:9559 --local_config=true & \
+    sleep 3 && \
+    echo 'Starting graphd...' && \
+    /usr/local/nebula/bin/nebula-graphd --flagfile=/usr/local/nebula/nebula-graphd.conf --meta_server_addrs=127.0.0.1:9559 --local_config=true & \
+    echo 'All services started.' && \
+    wait"]
