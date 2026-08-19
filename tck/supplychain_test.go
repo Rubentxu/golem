@@ -33,6 +33,7 @@ import (
 	appwork "github.com/Rubentxu/golem/internal/application/work"
 	"github.com/Rubentxu/golem/internal/ports"
 	domainsupplychain "github.com/Rubentxu/golem/internal/supplychain"
+	"github.com/Rubentxu/golem/tck"
 )
 
 // loadFixture reads a testdata fixture file.
@@ -91,7 +92,7 @@ func newStack(t *testing.T) *stack {
 	go func() { _ = rt.Run(ctx, 10, 5*time.Millisecond) }()
 
 	ingestSvc := ingest.New(rt.Bus)
-	srv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).
+	srv := httptest.NewServer(httpapi.NewWithMounts(rt.Bus, tck.MountDepsForRT(rt), tck.NewMountSet(rt)).
 		WithSearch(rt.Search).WithIngest(ingestSvc).Handler())
 
 	tenant := "t_sc"

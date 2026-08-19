@@ -23,6 +23,7 @@ import (
 	appver "github.com/Rubentxu/golem/internal/application/verification"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
 	"github.com/Rubentxu/golem/internal/ports"
+	"github.com/Rubentxu/golem/tck"
 )
 
 // TestM3Lineage proves the M3 exit criterion end to end over HTTP:
@@ -51,7 +52,7 @@ func TestM3Lineage(t *testing.T) {
 	defer cancel()
 	go func() { _ = rt.Run(ctx, 10, 5*time.Millisecond) }()
 
-	srv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).Handler())
+	srv := httptest.NewServer(httpapi.NewWithMounts(rt.Bus, tck.MountDepsForRT(rt), tck.NewMountSet(rt)).Handler())
 	defer srv.Close()
 	client := srv.Client()
 

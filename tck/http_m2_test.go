@@ -19,6 +19,7 @@ import (
 	"github.com/Rubentxu/golem/internal/application/runtime"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
 	"github.com/Rubentxu/golem/internal/ports"
+	"github.com/Rubentxu/golem/tck"
 )
 
 // TestM2SliceRequirementsAndConcurrency covers the M2 additions over
@@ -44,7 +45,7 @@ func TestM2SliceRequirementsAndConcurrency(t *testing.T) {
 	defer cancel()
 	go func() { _ = rt.Run(ctx, 10, 5*time.Millisecond) }()
 
-	srv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).Handler())
+	srv := httptest.NewServer(httpapi.NewWithMounts(rt.Bus, tck.MountDepsForRT(rt), tck.NewMountSet(rt)).Handler())
 	defer srv.Close()
 
 	client := srv.Client()
@@ -221,7 +222,7 @@ func TestDynamicSchemasAndWorkflows(t *testing.T) {
 	defer cancel()
 	go func() { _ = rt.Run(ctx, 10, 5*time.Millisecond) }()
 
-	srv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).Handler())
+	srv := httptest.NewServer(httpapi.NewWithMounts(rt.Bus, tck.MountDepsForRT(rt), tck.NewMountSet(rt)).Handler())
 	defer srv.Close()
 	client := srv.Client()
 

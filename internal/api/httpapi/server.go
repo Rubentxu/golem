@@ -129,6 +129,7 @@ type Server struct {
 	commands CommandSubmitter
 	graph    ports.GraphStore
 	streams  StreamVersionReader
+	journal  ports.JournalStore // underlying journal for JournalStreamReader creation in routesWithMounts
 	search   SearchReader
 	ingest   IngestService
 	packs    PackRegistry
@@ -146,6 +147,12 @@ type Server struct {
 
 	// AdminHandlers provides the /admin/* endpoints (ADR-081).
 	AdminHandlers *admin.AdminMux
+
+	// mounts is the list of HTTPMounts to register (from WithMounts).
+	mounts []HTTPMount
+
+	// routeLabels maps registered route patterns to their labels (for middleware).
+	routeLabels map[string]string
 
 	idsOnce sync.Once
 	idgen   ports.IDGenerator
@@ -194,11 +201,74 @@ func (s *Server) WithAdminHandlers(h *admin.AdminMux) *Server {
 	return s
 }
 
+// WithMounts sets the HTTPMount list and returns the server for chaining.
+// During T07/T08, both legacy routes() and mounts coexist; T09 removes legacy.
+func (s *Server) WithMounts(mounts []HTTPMount) *Server {
+	s.mounts = mounts
+	return s
+}
+
 // Handler returns the routed handler wrapped with the observability
 // middleware: correlation propagation (X-Correlation-Id, generated when
 // absent), request spans and status metrics.
 func (s *Server) Handler() http.Handler {
+	// Use mount-based routing if mounts are set; otherwise fall back to legacy.
+	if len(s.mounts) > 0 {
+		return s.middleware(s.routesWithMounts())
+	}
 	return s.middleware(s.routes())
+}
+
+// routesWithMounts registers routes from all HTTPMounts and returns the mux.
+// It also registers legacy routes not covered by any mount (requirements, search,
+// projects, planning, scm, ci, ingest) so that tests using NewWithMounts can still
+// access legacy endpoints. Routes already covered by mounts (work-items,
+// work-types, test/runs, releases, trace, healthz, etc.) are NOT registered here
+// to avoid conflicts with mount-based routes.
+func (s *Server) routesWithMounts() http.Handler {
+	mux := http.NewServeMux()
+	s.routeLabels = make(map[string]string)
+
+	// Build MountDeps with a pointer to s.routeLabels so RegisterRoute
+	// can record labels for middleware.
+	deps := MountDeps{
+		Observability: s.obs,
+		Bus:          s.commands,
+		GraphNodeFetcher: ports.NewGraphNodeFetcherOverGraphStore(s.graph),
+		routeLabels:  &s.routeLabels,
+		// Other deps fields are nil for now; T10 wires them fully.
+	}
+
+	// If s.journal is available, wrap it as JournalStreamReader.
+	if s.journal != nil {
+		deps.JournalStreamReader = ports.NewJournalStreamReaderOverJournalStore(s.journal)
+	}
+
+	for _, m := range s.mounts {
+		if err := m.Mount(mux, deps); err != nil {
+			// At construction time we expect no registration errors; fail fast.
+			panic("mount " + m.Pattern() + ": " + err.Error())
+		}
+	}
+
+	// Register legacy routes not covered by any mount.
+	// Routes covered by mounts: PlatformMount (healthz, readyz, status, metrics),
+	// WorkMount (work-items, work-types), VerificationMount (test/runs, trace),
+	// ReleaseMount (releases, blast-radius), AdminMount (admin/*).
+	mux.HandleFunc("POST /api/v1/packs/activate", s.handleActivatePack)
+	mux.HandleFunc("POST /api/v1/requirements", s.handleCreateRequirement)
+	mux.HandleFunc("GET /api/v1/requirements/{id}", s.handleGetRequirement)
+	mux.HandleFunc("POST /api/v1/graph/neighborhood", s.handleNeighborhood)
+	mux.HandleFunc("GET /api/v1/search", s.handleSearch)
+	mux.HandleFunc("POST /api/v1/projects", s.handleCreateProject)
+	mux.HandleFunc("POST /api/v1/planning/iterations", s.handleCreateIteration)
+	mux.HandleFunc("POST /api/v1/planning/milestones", s.handleCreateMilestone)
+	mux.HandleFunc("GET /api/v1/planning/iterations/{id}/board", s.handleIterationBoard)
+	mux.HandleFunc("POST /api/v1/scm/commits", s.handleObserveCommit)
+	mux.HandleFunc("POST /api/v1/ci/builds", s.handleCompleteBuild)
+	mux.HandleFunc("POST /api/v1/ingest/{provider}", s.handleIngest)
+
+	return mux
 }
 
 func (s *Server) routes() http.Handler {
@@ -281,10 +351,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		// Handlers echo the correlation id in bodies and headers.
 		w.Header().Set("X-Correlation-Id", corr)
 
-		route := "unmatched"
-		if match, pat := muxMatch(r); match {
-			route = pat
-		}
+		route := s.routeLabel(r)
 		ctx, span := s.obs.Tracer.Start(r.Context(), "golem.http.request",
 			ports.A("http.method", r.Method), ports.A("http.route", route))
 		defer span.End(nil)
@@ -311,50 +378,23 @@ func (s *Server) ids() ports.IDGenerator {
 	return s.idgen
 }
 
-// muxMatch reports the ServeMux pattern the request would match. With
-// Go 1.22+ net/http the mux does not expose pattern lookup, so the edge
-// keeps its own route table.
-func muxMatch(r *http.Request) (bool, string) {
-	routes := []struct{ method, pattern string }{
-		{http.MethodGet, "/healthz"},
-		{http.MethodPost, "/api/v1/work-items"},
-		{http.MethodGet, "/api/v1/work-items/{id}"},
-		{http.MethodPatch, "/api/v1/work-items/{id}"},
-		{http.MethodPost, "/api/v1/work-items/{id}/links"},
-		{http.MethodPost, "/api/v1/requirements"},
-		{http.MethodGet, "/api/v1/requirements/{id}"},
-		{http.MethodPost, "/api/v1/graph/neighborhood"},
-		{http.MethodGet, "/api/v1/search"},
-		{http.MethodPost, "/api/v1/work-types"},
-		{http.MethodGet, "/api/v1/work-types/{name}"},
-		{http.MethodPost, "/api/v1/projects"},
-		{http.MethodPost, "/api/v1/planning/iterations"},
-		{http.MethodPost, "/api/v1/planning/milestones"},
-		{http.MethodGet, "/api/v1/planning/iterations/{id}/board"},
-		{http.MethodPost, "/api/v1/work-items/{id}/comments"},
-		{http.MethodGet, "/api/v1/work-items/{id}/events"},
-		{http.MethodPost, "/api/v1/scm/commits"},
-		{http.MethodPost, "/api/v1/ci/builds"},
-		{http.MethodPost, "/api/v1/test/runs"},
-		{http.MethodGet, "/api/v1/trace/{id}"},
-		{http.MethodPost, "/api/v1/ingest/{provider}"},
-		{http.MethodPost, "/api/v1/releases"},
-		{http.MethodPost, "/api/v1/releases/{id}/gate"},
-		{http.MethodGet, "/api/v1/releases/{id}"},
-		{http.MethodGet, "/api/v1/components/{purl}/blast-radius"},
+// routeLabel returns the route label for a request by looking up
+// s.routeLabels (populated by mount-based registration).
+func (s *Server) routeLabel(r *http.Request) string {
+	if s.routeLabels == nil {
+		return "unmatched"
 	}
-	for _, rt := range routes {
-		if r.Method == rt.method {
-			if _, ok := routeMatches(rt.pattern, r.URL.Path); ok {
-				return true, rt.pattern
-			}
+	// Linear search through registered patterns.
+	for pattern := range s.routeLabels {
+		if _, ok := matchPattern(pattern, r.URL.Path); ok {
+			return pattern
 		}
 	}
-	return false, ""
+	return "unmatched"
 }
 
-// routeMatches checks a {param} pattern against a concrete path.
-func routeMatches(pattern, path string) (map[string]string, bool) {
+// matchPattern checks a {param} pattern against a concrete path.
+func matchPattern(pattern, path string) (map[string]string, bool) {
 	pp := strings.Split(strings.Trim(pattern, "/"), "/")
 	cp := strings.Split(strings.Trim(path, "/"), "/")
 	if len(pp) != len(cp) {
