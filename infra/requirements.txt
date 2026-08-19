@@ -1,0 +1,2 @@
+# Python dependencies for Golem graph DB benchmark suite (ADR-086)
+requests>=2.31.0

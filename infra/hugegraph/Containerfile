@@ -1,15 +1,22 @@
 # Apache HugeGraph (benchmark candidate #1 per ADR-086)
-# Official: https://hub.docker.com/r/hugegraph/hugegraph
-FROM docker.io/hugegraph/hugegraph:latest
+#
+# HugeGraph needs a backend (HBase or RocksDB). The official all-in-one
+# image includes HugeGraphServer + RocksDB backend for single-node benchmarking.
+#
+# Ports:
+#   8080 — Gremlin HTTP (main API)
+#   8090 — HugeStudio (optional, web UI)
+#   8081 — HBase (embedded, single-node only)
+#
+# Health check: GET /graphs/hugegraph
+#
+# Usage:
+#   podman build -t golem-hugegraph:latest .
+#   podman run -d --name golem-hugegraph -p 8080:8080 -p 8090:8090 -p 8081:8081 golem-hugegraph:latest
 
-# HugeGraph ports:
-# 8080 — HTTP API (Gremlin)
-# 8090 — Hbase backend
-# 8081 — Studio (optional)
+FROM docker.io/hugegraph/hugegraph:latest
 
 EXPOSE 8080 8090 8081
 
-# Data volume
-VOLUME ["/opt/hugegraph"]
-
-# Default: starts all services (HugeGraphServer + HBase)
+# The official image starts HugeGraphServer + uses RocksDB as backend
+# No extra config needed for single-node benchmark

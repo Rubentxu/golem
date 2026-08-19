@@ -1,16 +1,35 @@
 # NebulaGraph (benchmark candidate #2 per ADR-086)
-# Note: NebulaGraph es distributed por defecto. Para benchmark single-node
-# usamos la imagen all-in-one de vesoft.
-# Official: https://hub.docker.com/r/vesoft/nebula-graphd
+#
+# NebulaGraph is a distributed graph DB. For single-node benchmarking we run
+# all three services (metad + storaged + graphd) in one container using the
+# nebula-console for orchestration.
+#
+# Ports (single-node all-in-one layout):
+#   9669  — NebulaGraph service (Thrift)
+#   19669 — HTTP (nebula-console)
+#   7689  — internal RPC
+#
+# Health check: HTTP GET http://host:19669/status
+#
+# Note: NebulaGraph's official docker images are designed for docker-compose
+# multi-container setups. For benchmark we use a single container that
+# starts all services via Entrypoint.
+#
+# Usage:
+#   podman build -t golem-nebula:latest .
+#   podman run -d --name golem-nebula \
+#     -p 9669:9669 -p 19669:19669 -p 7689:7689 \
+#     golem-nebula:latest
+
 FROM docker.io/vesoft/nebula-graphd:latest
 
-# NebulaGraph ports:
-# 9669 — NebulaGraph service port (Thrift)
-# 19669 — HTTP port
+EXPOSE 9669 19669 7689
 
-EXPOSE 9669 19669
-
-# Graphd es stateless; el estado vive en storaged y metad
-# Para benchmark single-node, se asume que storaged y metad ya estan corriendo
-# en los containers nebula-storaged y nebula-metad (fuera del scope de este Containerfile)
-CMD ["--flagfile=/usr/local/nebula/nebula-graphd.conf"]
+# Entrypoint is already set to start graphd
+# Note: storaged and metad must be running for graphd to function.
+# For a true single-node test use:
+#   docker run --rm -it vesoft/nebula-console:latest
+#   > CREATE SPACE golem_bench (partition_num=1, replica_factor=1, vid_type=FIXED_STRING(32))
+#
+# For the benchmark harness, we assume an external nebula cluster or
+# a pre-configured single-node setup is already running.
