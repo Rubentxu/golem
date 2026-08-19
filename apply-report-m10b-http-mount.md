@@ -25,6 +25,8 @@
 
 2. **`routesWithMounts` builds fresh `MountDeps` with empty fields.** The current implementation creates a new `MountDeps` and only passes `Bus` + `Registry` + `routeLabels` to it. Other read-side ports (ReleaseGraphReader, BlastRadiusQuery, etc.) are nil. This is incorrect behavior for production. M10c TASK-M10-12 must fix `routesWithMounts` to use the deps stored at `NewWithMounts` construction time.
 
+3. **`MountDeps` mutex-by-value bug.** `internal/api/httpapi/mount.go:58` declares `mu sync.Mutex` inside `MountDeps`. The struct is then passed **by value** from `NewWithMounts` → `m.Mount()` → `handle*(deps)` → closure. Result: each copy has its own mutex, locking one doesn't lock the others. `go vet ./internal/api/httpapi/...` reports 20+ "passes lock by value" warnings. **Concurrency-safe design**: refactor to `MountDeps*` (pointer) or remove the mutex entirely (use `sync.Map` + atomic). M10c TASK-M10-13.
+
 ## Tests status
 
 - PASS: `TestWorkRoutesResponseParity`, `TestRouteLabelsDerivedFromMounts`, all unit tests, all kernel port TCK tests.
@@ -46,6 +48,13 @@
 - **R1**: production wiring (main.go) still uses legacy `New()`. New Mount system is exercised only by tests. M10c MUST close this before any release.
 - **R2**: 3 integration tests fail. Cannot certify M10's "vertical-hexagons don't break integration" until the projection timing bug is fixed.
 - **R3**: `routesWithMounts` doesn't pass the full MountDeps built at `NewWithMounts`. This is a real bug that only M10c's wiring+fresh test will catch.
+- **R4**: `go vet` reports 20+ "MountDeps passes lock by value" warnings. Symptom of a real concurrency bug (mutex copied at every handler call). M10c must fix this BEFORE any production concurrent traffic.
+
+## `go vet` findings
+
+- 20+ warnings, ALL introduced by T10 (verified: `git checkout 81046b4 && go vet ./internal/api/httpapi/...` returns 0 warnings).
+- Root cause: `MountDeps` embeds `sync.Mutex` and is copied at every layer.
+- Fix scope: M10c TASK-M10-13 (see above).
 
 ## Ledger entries
 
@@ -57,4 +66,4 @@
 
 PASS_WITH_WARNINGS. M10b's scope (HTTPMount, MultiMount, MountDeps, WorkMount, 2 kernel ports, TCK port layer) is complete and stable. The 3 pre-existing test failures and the main.go wiring are SEPARATE from this cycle's scope and belong to M10c.
 
-**M10c next**: archtest + ADR-100 Accepted + ADR-CATALOG + main.go rewiring + `routesWithMounts` fix + projection timing diagnostic.
+**M10c next**: archtest + ADR-100 Accepted + ADR-CATALOG + main.go rewiring + `routesWithMounts` fix + MountDeps mutex-by-value fix + projection timing diagnostic.
