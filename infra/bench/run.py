@@ -4,13 +4,13 @@ Benchmark runner for Golem graph DB candidates (ADR-086).
 
 Usage:
   # Run all workloads against a candidate
-  python3 infra/bench/run.py hugegraph http://localhost:8080
+  python3 -m infra.bench.run hugegraph http://localhost:8080
 
   # Run specific workloads
-  python3 infra/bench/run.py hugegraph http://localhost:8080 W1 W2 W3
+  python3 -m infra.bench.run hugegraph http://localhost:8080 W1 W2 W3
 
   # Run with custom params
-  python3 infra/bench/run.py dgraph http://localhost:8080 --nodes 50000 --queries 500
+  python3 -m infra.bench.run dgraph http://localhost:8080 --nodes 50000 --queries 500
 
 Workloads (ADR-086):
   W1: Bulk load      — 100K nodes + 500K edges
@@ -27,8 +27,8 @@ import sys
 import time
 from pathlib import Path
 
-from clients import HugeGraphClient, NebulaGraphClient, DgraphClient
-from workloads import WORKLOADS, WorkloadResult
+from .clients import HugeGraphClient, NebulaGraphClient, DgraphClient
+from .workloads import WORKLOADS, WorkloadResult
 
 
 # ── Client factory ──────────────────────────────────────────────────────────

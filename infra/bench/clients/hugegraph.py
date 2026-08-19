@@ -15,7 +15,7 @@ from typing import Any
 
 import requests
 
-from .domain import (
+from ..domain import (
     NODE_KIND_DEFS,
     EDGE_TYPE_DEFS,
     NodeKind,

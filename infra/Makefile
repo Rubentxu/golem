@@ -113,7 +113,7 @@ ifneq ($(service),)
 	@echo "==> Running benchmark against $(service) ($(call _bench-url))"
 	@# Ensure service is healthy before running
 	@sleep 5 && make health
-	cd $(REPO_ROOT)/infra/bench && python3 run.py $(service) $(call _bench-url) --tck
+	cd $(REPO_ROOT) && python3 -m infra.bench.run $(service) $(call _bench-url) --tck --output bench-results-$(service).json
 else
 	@echo "Usage: make bench service=hugegraph|nebula-allinone|dgraph"
 	@echo "Example: make bench service=hugegraph"

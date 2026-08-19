@@ -17,7 +17,7 @@ from typing import Any
 
 import requests
 
-from .domain import NODE_KIND_DEFS, EDGE_TYPE_DEFS
+from ..domain import NODE_KIND_DEFS, EDGE_TYPE_DEFS
 
 
 class DgraphClient:
