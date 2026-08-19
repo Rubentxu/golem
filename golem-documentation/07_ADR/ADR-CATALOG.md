@@ -86,3 +86,5 @@
 | [ADR-085](ADR-085.md) | Accepted | NATS JetStream required en profiles non-dev; prod corrige transport a natsjs |
 | [ADR-086](ADR-086.md) | Accepted | Benchmark gate para ADR-013: quadlets estables para candidates de graph DB |
 | [ADR-087](ADR-087.md) | Accepted | Graph database elegida: Dgraph (resultado benchmark gate: W1 3957/s vs HugeGraph 363/s; HugeGraph descartado por 99% error rate en edge kind enforcement; NebulaGraph diferido con triggers de re-evaluación) |
+| [ADR-101](../docs/golem-active-engineering-graph-spec/04_ADRS/ADR-101.md) | Accepted | Command idempotency atomic with journal append (m9-kernel-correctness TCK) |
+| [ADR-102](../docs/golem-active-engineering-graph-spec/04_ADRS/ADR-102.md) | Accepted | Projection runners consume no-op events and apply all chunks (m9-kernel-correctness TCK) |
