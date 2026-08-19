@@ -87,84 +87,15 @@ func (s *Store) Append(ctx context.Context, events []ports.RawEvent) ([]ports.Ap
 	var results []ports.AppendResult
 	err := s.db.Update(func(tx *bolt.Tx) error {
 		results = make([]ports.AppendResult, 0, len(events))
-
 		for _, e := range events {
-			if err := validateEvent(e); err != nil {
-				return err
-			}
-
-			// Check for duplicate by event ID.
-			idIndex := tx.Bucket([]byte(bucketIDIndex))
-			if posBytes := idIndex.Get([]byte(e.EventID)); posBytes != nil {
-				pos := decodeUint64BE(posBytes)
-				results = append(results, ports.AppendResult{
-					EventID:   e.EventID,
-					Position:  ports.StreamPosition(pos),
-					Duplicate: true,
-				})
-				continue
-			}
-
-			// Read current head.
-			head, err := readHead(tx)
+			res, err := s.appendOneEvent(tx, e, nil)
 			if err != nil {
 				return err
 			}
-			newPos := head + 1
-
-			// Store in id_index: eventID → position.
-			if err := idIndex.Put([]byte(e.EventID), encodeUint64BE(newPos)); err != nil {
-				return fmt.Errorf("store id index: %w", err)
-			}
-
-			// Store event: position → JSON.
-			eventsBucket := tx.Bucket([]byte(bucketEvents))
-			data, err := json.Marshal(e)
-			if err != nil {
-				return fmt.Errorf("marshal event: %w", err)
-			}
-			if err := eventsBucket.Put(encodeUint64BE(newPos), data); err != nil {
-				return fmt.Errorf("store event: %w", err)
-			}
-
-			// Update head.
-			if err := writeHead(tx, newPos); err != nil {
-				return err
-			}
-
-			// Update stream: increment stream version and store position by version.
-			streamsBucket := tx.Bucket([]byte(bucketStreams))
-			streamKey := streamKey(string(e.TenantID), e.StreamID)
-			streamVersionBytes := streamsBucket.Get(streamKey)
-			var streamVersion uint64
-			if streamVersionBytes != nil {
-				streamVersion = decodeUint64BE(streamVersionBytes)
-			}
-			newStreamVersion := streamVersion + 1
-
-			// Store new stream version → position.
-			if err := streamsBucket.Put(streamKey, encodeUint64BE(newStreamVersion)); err != nil {
-				return fmt.Errorf("update stream version: %w", err)
-			}
-			// Store version key → position.
-			versionKey := streamVersionKey(string(e.TenantID), e.StreamID, newStreamVersion)
-			if err := streamsBucket.Put(versionKey, encodeUint64BE(newPos)); err != nil {
-				return fmt.Errorf("store stream version key: %w", err)
-			}
-
-			// Increment event count.
-			if err := incrementCounter(tx, counterEventCount); err != nil {
-				return err
-			}
-
-			results = append(results, ports.AppendResult{
-				EventID:  e.EventID,
-				Position: ports.StreamPosition(newPos),
-			})
+			results = append(results, res)
 		}
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +116,7 @@ func (s *Store) AppendIf(ctx context.Context, expected ports.StreamVersion, even
 
 	var results []ports.AppendResult
 	err := s.db.Update(func(tx *bolt.Tx) error {
-		// Read-precondition: verify stream version matches expected.
+		// Precondition: stream version must match expected.
 		streamsBucket := tx.Bucket([]byte(bucketStreams))
 		streamKey := streamKey(string(expected.TenantID), expected.StreamID)
 		streamVersionBytes := streamsBucket.Get(streamKey)
@@ -198,77 +129,85 @@ func (s *Store) AppendIf(ctx context.Context, expected ports.StreamVersion, even
 		}
 
 		results = make([]ports.AppendResult, 0, len(events))
+		baseVersion := expected.Version
 		for _, e := range events {
-			if err := validateEvent(e); err != nil {
-				return err
-			}
-
-			// Check for duplicate within this batch.
-			idIndex := tx.Bucket([]byte(bucketIDIndex))
-			if posBytes := idIndex.Get([]byte(e.EventID)); posBytes != nil {
-				pos := decodeUint64BE(posBytes)
-				results = append(results, ports.AppendResult{
-					EventID:   e.EventID,
-					Position:  ports.StreamPosition(pos),
-					Duplicate: true,
-				})
-				continue
-			}
-
-			// Read current head.
-			head, err := readHead(tx)
+			res, err := s.appendOneEvent(tx, e, &baseVersion)
 			if err != nil {
 				return err
 			}
-			newPos := head + 1
-
-			// Store in id_index.
-			if err := idIndex.Put([]byte(e.EventID), encodeUint64BE(newPos)); err != nil {
-				return fmt.Errorf("store id index: %w", err)
-			}
-
-			// Store event.
-			eventsBucket := tx.Bucket([]byte(bucketEvents))
-			data, err := json.Marshal(e)
-			if err != nil {
-				return fmt.Errorf("marshal event: %w", err)
-			}
-			if err := eventsBucket.Put(encodeUint64BE(newPos), data); err != nil {
-				return fmt.Errorf("store event: %w", err)
-			}
-
-			// Update head.
-			if err := writeHead(tx, newPos); err != nil {
-				return err
-			}
-
-			// Update stream: advance version and store position.
-			newStreamVersion := expected.Version + 1
-			if err := streamsBucket.Put(streamKey, encodeUint64BE(newStreamVersion)); err != nil {
-				return fmt.Errorf("update stream version: %w", err)
-			}
-			versionKey := streamVersionKey(string(e.TenantID), e.StreamID, newStreamVersion)
-			if err := streamsBucket.Put(versionKey, encodeUint64BE(newPos)); err != nil {
-				return fmt.Errorf("store stream version key: %w", err)
-			}
-
-			// Increment event count.
-			if err := incrementCounter(tx, counterEventCount); err != nil {
-				return err
-			}
-
-			results = append(results, ports.AppendResult{
-				EventID:  e.EventID,
-				Position: ports.StreamPosition(newPos),
-			})
+			results = append(results, res)
+			baseVersion++
 		}
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
 	return results, nil
+}
+
+// appendOneEvent writes a single event inside a bolt tx.
+// If baseVersion is nil, auto-increments stream version from current state.
+// If baseVersion is set, uses it as the base and increments for each call.
+func (s *Store) appendOneEvent(tx *bolt.Tx, e ports.RawEvent, baseVersion *uint64) (ports.AppendResult, error) {
+	if err := validateEvent(e); err != nil {
+		return ports.AppendResult{}, err
+	}
+
+	idIndex := tx.Bucket([]byte(bucketIDIndex))
+	if posBytes := idIndex.Get([]byte(e.EventID)); posBytes != nil {
+		pos := decodeUint64BE(posBytes)
+		return ports.AppendResult{EventID: e.EventID, Position: ports.StreamPosition(pos), Duplicate: true}, nil
+	}
+
+	head, err := readHead(tx)
+	if err != nil {
+		return ports.AppendResult{}, err
+	}
+	newPos := head + 1
+
+	if err := idIndex.Put([]byte(e.EventID), encodeUint64BE(newPos)); err != nil {
+		return ports.AppendResult{}, fmt.Errorf("store id index: %w", err)
+	}
+
+	eventsBucket := tx.Bucket([]byte(bucketEvents))
+	data, err := json.Marshal(e)
+	if err != nil {
+		return ports.AppendResult{}, fmt.Errorf("marshal event: %w", err)
+	}
+	if err := eventsBucket.Put(encodeUint64BE(newPos), data); err != nil {
+		return ports.AppendResult{}, fmt.Errorf("store event: %w", err)
+	}
+
+	if err := writeHead(tx, newPos); err != nil {
+		return ports.AppendResult{}, err
+	}
+
+	streamsBucket := tx.Bucket([]byte(bucketStreams))
+	streamKey := streamKey(string(e.TenantID), e.StreamID)
+	var streamVersion uint64
+	if baseVersion != nil {
+		streamVersion = *baseVersion
+	} else {
+		if v := streamsBucket.Get(streamKey); v != nil {
+			streamVersion = decodeUint64BE(v)
+		}
+	}
+	newStreamVersion := streamVersion + 1
+
+	if err := streamsBucket.Put(streamKey, encodeUint64BE(newStreamVersion)); err != nil {
+		return ports.AppendResult{}, fmt.Errorf("update stream version: %w", err)
+	}
+	versionKey := streamVersionKey(string(e.TenantID), e.StreamID, newStreamVersion)
+	if err := streamsBucket.Put(versionKey, encodeUint64BE(newPos)); err != nil {
+		return ports.AppendResult{}, fmt.Errorf("store stream version key: %w", err)
+	}
+
+	if err := incrementCounter(tx, counterEventCount); err != nil {
+		return ports.AppendResult{}, err
+	}
+
+	return ports.AppendResult{EventID: e.EventID, Position: ports.StreamPosition(newPos)}, nil
 }
 
 // ReadStream returns events for one tenant/stream with version > fromVersion.
