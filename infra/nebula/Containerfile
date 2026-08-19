@@ -12,22 +12,32 @@
 # Usage:
 #   docker compose up -d nebula-allinone
 
+FROM docker.io/vesoft/nebula-metad:latest AS metad-stage
+FROM docker.io/vesoft/nebula-storaged:latest AS storaged-stage
 FROM docker.io/vesoft/nebula-graphd:latest
 
-# metad and storaged binaries come from the full NebulaGraph distribution.
-# Pull from the metad image and copy only the binaries we need.
-COPY --from=docker.io/vesoft/nebula-metad:latest /usr/local/nebula/bin/nebula-metad /usr/local/nebula/bin/
-COPY --from=docker.io/vesoft/nebula-storaged:latest /usr/local/nebula/bin/nebula-storaged /usr/local/nebula/bin/
+# metad and storaged binaries
+COPY --from=metad-stage /usr/local/nebula/bin/nebula-metad /usr/local/nebula/bin/
+COPY --from=storaged-stage /usr/local/nebula/bin/nebula-storaged /usr/local/nebula/bin/
 
-# Entrypoint starts all three services in sequence
+# metad and storaged config files
+COPY --from=metad-stage /usr/local/nebula/etc/nebula-metad.conf /usr/local/nebula/etc/nebula-metad.conf
+COPY --from=storaged-stage /usr/local/nebula/etc/nebula-storaged.conf /usr/local/nebula/etc/nebula-storaged.conf
+
+# Entrypoint starts all three services as proper child processes
+# Use trap to handle signals properly so NebulaGraph services don't get orphaned
 ENTRYPOINT ["/bin/bash", "-c", "\
+    trap 'kill -TERM 0' EXIT INT TERM HUP; \
     echo 'Starting metad...' && \
-    /usr/local/nebula/bin/nebula-metad --flagfile=/usr/local/nebula/nebula-metad.conf --meta_server_addrs=127.0.0.1:9559 --local_config=true & \
-    sleep 3 && \
+    /usr/local/nebula/bin/nebula-metad --flagfile=/usr/local/nebula/etc/nebula-metad.conf --meta_server_addrs=127.0.0.1:9559 & \
+    METAD_PID=$! && \
+    sleep 5 && \
     echo 'Starting storaged...' && \
-    /usr/local/nebula/bin/nebula-storaged --flagfile=/usr/local/nebula/nebula-storaged.conf --meta_server_addrs=127.0.0.1:9559 --local_config=true & \
-    sleep 3 && \
+    /usr/local/nebula/bin/nebula-storaged --flagfile=/usr/local/nebula/etc/nebula-storaged.conf --meta_server_addrs=127.0.0.1:9559 & \
+    STORaged_PID=$! && \
+    sleep 5 && \
     echo 'Starting graphd...' && \
-    /usr/local/nebula/bin/nebula-graphd --flagfile=/usr/local/nebula/nebula-graphd.conf --meta_server_addrs=127.0.0.1:9559 --local_config=true & \
-    echo 'All services started.' && \
+    /usr/local/nebula/bin/nebula-graphd --flagfile=/usr/local/nebula/etc/nebula-graphd.conf --meta_server_addrs=127.0.0.1:9559 & \
+    GRAPHD_PID=$! && \
+    echo 'All services started (metad=$METAD_PID, storaged=$STORAGED_PID, graphd=$GRAPHD_PID).' && \
     wait"]
