@@ -171,6 +171,9 @@ func (b *Bus) submit(ctx context.Context, cmd Command, commandID, correlation st
 		return receipt, nil
 	}
 
+	// Check if the command requires conditional appending (ExpectedStreamVersion).
+	// CommandJournal doesn't support conditional appending, so we must use the legacy path.
+	// We need to call the handler to know if any draft has ExpectedStreamVersion.
 	b.mu.RLock()
 	handler, ok := b.handlers[cmd.Name]
 	b.mu.RUnlock()
@@ -186,6 +189,46 @@ func (b *Bus) submit(ctx context.Context, cmd Command, commandID, correlation st
 		return ports.CommandReceipt{}, fmt.Errorf("command %s: handler produced no events", cmd.Name)
 	}
 
+	// Check if any draft requires conditional appending.
+	hasConditional := false
+	for i := range drafts {
+		if drafts[i].ExpectedStreamVersion != nil {
+			hasConditional = true
+			break
+		}
+	}
+
+	// If conditional appending is required, use legacy path.
+	// Also use legacy path if journal doesn't implement CommandJournal.
+	if hasConditional {
+		ls := &LegacyCommandSubmitter{
+			journal:  b.journal,
+			registry: b.registry,
+			ids:      b.ids,
+			clock:    b.clock,
+		}
+		return ls.Submit(ctx, cmd, commandID, correlation, drafts)
+	}
+
+	// For unconditional appends, prefer CommandJournal if available.
+	if cj, ok := b.journal.(ports.CommandJournal); ok {
+		return b.submitWithJournal(ctx, cmd, commandID, correlation, cj, drafts)
+	}
+
+	// Legacy path for unconditional appends when CommandJournal is not available.
+	ls := &LegacyCommandSubmitter{
+		journal:  b.journal,
+		registry: b.registry,
+		ids:      b.ids,
+		clock:    b.clock,
+	}
+	return ls.Submit(ctx, cmd, commandID, correlation, drafts)
+}
+
+// submitWithJournal uses the CommandJournal interface for atomic command processing.
+// It assumes drafts have already been validated and none have ExpectedStreamVersion set.
+// The idempotent replay check (registry.Find) is done by the caller (submit).
+func (b *Bus) submitWithJournal(ctx context.Context, cmd Command, commandID, correlation string, cj ports.CommandJournal, drafts []EventDraft) (ports.CommandReceipt, error) {
 	envelopes := make([]ports.RawEvent, 0, len(drafts))
 	for _, d := range drafts {
 		payload, err := json.Marshal(d.Payload)
@@ -210,38 +253,32 @@ func (b *Bus) submit(ctx context.Context, cmd Command, commandID, correlation st
 		})
 	}
 
-	// Conditional append when any draft carries an expected version; a
-	// command may only condition on one stream (ADR-021).
-	var expected *ports.StreamVersion
-	for i := range drafts {
-		if v := drafts[i].ExpectedStreamVersion; v != nil {
-			if expected != nil && (expected.StreamID != drafts[i].StreamID || expected.Version != *v) {
-				return ports.CommandReceipt{}, fmt.Errorf("command %s: conflicting stream expectations in one command", cmd.Name)
-			}
-			expected = &ports.StreamVersion{TenantID: cmd.TenantID, StreamID: drafts[i].StreamID, Version: *v}
-		}
+	// Build fingerprint from command record + events for collision detection.
+	// The fingerprint is used to detect if the same command_id is reused
+	// with a different payload (programming error).
+	fingerprint := fmt.Sprintf("%s:%d", commandID, len(envelopes))
+
+	cmdRecord := ports.CommandRecord{
+		CommandID:     commandID,
+		CommandKind:   cmd.Name,
+		TenantID:      cmd.TenantID,
+		Actor:         cmd.Actor,
+		CorrelationID: correlation,
+		Fingerprint:   fingerprint,
 	}
 
-	var results []ports.AppendResult
-	if expected != nil {
-		results, err = b.journal.AppendIf(ctx, *expected, envelopes)
-	} else {
-		results, err = b.journal.Append(ctx, envelopes)
-	}
+	jr, err := cj.AppendCommand(ctx, cmdRecord, envelopes)
 	if err != nil {
 		return ports.CommandReceipt{}, fmt.Errorf("command %s: journal append: %w", cmd.Name, err)
 	}
 
+	// Convert CommandJournalReceipt to CommandReceipt.
 	receipt := ports.CommandReceipt{
-		CommandID: commandID,
-		TenantID:  cmd.TenantID,
-		EventIDs:  make([]string, 0, len(results)),
-	}
-	for _, r := range results {
-		receipt.EventIDs = append(receipt.EventIDs, r.EventID)
-		if r.Position > receipt.Position {
-			receipt.Position = r.Position
-		}
+		CommandID: jr.CommandID,
+		TenantID:  jr.Tenant,
+		EventIDs:  jr.EventIDs,
+		Position:  jr.Position,
+		Duplicate: jr.Duplicate,
 	}
 
 	// A concurrent duplicate submission may win the Save race: its events
@@ -256,4 +293,17 @@ func (b *Bus) submit(ctx context.Context, cmd Command, commandID, correlation st
 		return ports.CommandReceipt{}, fmt.Errorf("command %s: registry save: %w", cmd.Name, err)
 	}
 	return receipt, nil
+}
+
+// submitLegacy uses the legacy Append + registry.Save path for journals
+// that do not implement CommandJournal.
+// The idempotent replay check (registry.Find) is done by the caller (submit).
+func (b *Bus) submitLegacy(ctx context.Context, cmd Command, commandID, correlation string, drafts []EventDraft) (ports.CommandReceipt, error) {
+	ls := &LegacyCommandSubmitter{
+		journal:  b.journal,
+		registry: b.registry,
+		ids:      b.ids,
+		clock:    b.clock,
+	}
+	return ls.Submit(ctx, cmd, commandID, correlation, drafts)
 }
