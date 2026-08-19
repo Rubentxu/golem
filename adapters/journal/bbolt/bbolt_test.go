@@ -241,10 +241,10 @@ func TestConcurrentReadWrite(t *testing.T) {
 	defer store.Close()
 
 	const (
-		numStreams     = 10
+		numStreams      = 10
 		eventsPerStream = 100
-		numReaders     = 4
-		readerIters    = 50
+		numReaders      = 4
+		readerIters     = 50
 	)
 
 	// Track errors from reader goroutines.
@@ -398,13 +398,13 @@ func TestRestore(t *testing.T) {
 	for i := 0; i < N; i++ {
 		srcEvents[i] = ports.RawEvent{
 			EventID:       fmt.Sprintf("restore-evt-%04d", i),
-			TenantID:       "tenant-restore",
-			StreamID:       "stream-restore",
-			EventType:      "test.restore.event.v1",
-			SchemaVersion:  1,
-			OccurredAt:     now.Add(time.Duration(i) * time.Millisecond),
-			Actor:          ports.Actor{Type: "user", ID: "actor-restore"},
-			Payload:        json.RawMessage(fmt.Sprintf(`{"index":%d}`, i)),
+			TenantID:      "tenant-restore",
+			StreamID:      "stream-restore",
+			EventType:     "test.restore.event.v1",
+			SchemaVersion: 1,
+			OccurredAt:    now.Add(time.Duration(i) * time.Millisecond),
+			Actor:         ports.Actor{Type: "user", ID: "actor-restore"},
+			Payload:       json.RawMessage(fmt.Sprintf(`{"index":%d}`, i)),
 		}
 	}
 	_, err = srcStore.Append(context.Background(), srcEvents)
@@ -483,13 +483,13 @@ func TestRestoreIdempotent(t *testing.T) {
 	for i := 0; i < N; i++ {
 		events[i] = ports.RawEvent{
 			EventID:       fmt.Sprintf("idempotent-evt-%04d", i),
-			TenantID:       "tenant-idempotent",
-			StreamID:       "stream-idempotent",
-			EventType:      "test.idempotent.event.v1",
-			SchemaVersion:  1,
-			OccurredAt:     now.Add(time.Duration(i) * time.Millisecond),
-			Actor:          ports.Actor{Type: "user", ID: "actor-idempotent"},
-			Payload:        json.RawMessage(fmt.Sprintf(`{"index":%d}`, i)),
+			TenantID:      "tenant-idempotent",
+			StreamID:      "stream-idempotent",
+			EventType:     "test.idempotent.event.v1",
+			SchemaVersion: 1,
+			OccurredAt:    now.Add(time.Duration(i) * time.Millisecond),
+			Actor:         ports.Actor{Type: "user", ID: "actor-idempotent"},
+			Payload:       json.RawMessage(fmt.Sprintf(`{"index":%d}`, i)),
 		}
 	}
 	_, err = srcStore.Append(context.Background(), events)
@@ -514,13 +514,13 @@ func TestRestoreIdempotent(t *testing.T) {
 	_, err = tgtStore.Append(context.Background(), []ports.RawEvent{
 		{
 			EventID:       "pre-existing-evt",
-			TenantID:       "tenant-idempotent",
-			StreamID:       "stream-idempotent",
-			EventType:      "test.idempotent.event.v1",
-			SchemaVersion:  1,
-			OccurredAt:     time.Now(),
-			Actor:          ports.Actor{Type: "user", ID: "actor-idempotent"},
-			Payload:        json.RawMessage(`{"index":999}`),
+			TenantID:      "tenant-idempotent",
+			StreamID:      "stream-idempotent",
+			EventType:     "test.idempotent.event.v1",
+			SchemaVersion: 1,
+			OccurredAt:    time.Now(),
+			Actor:         ports.Actor{Type: "user", ID: "actor-idempotent"},
+			Payload:       json.RawMessage(`{"index":999}`),
 		},
 	})
 	if err != nil {
@@ -548,13 +548,13 @@ func TestRestoreDigestMismatch(t *testing.T) {
 	for i := 0; i < N; i++ {
 		events[i] = ports.RawEvent{
 			EventID:       fmt.Sprintf("tamper-evt-%04d", i),
-			TenantID:       "tenant-tamper",
-			StreamID:       "stream-tamper",
-			EventType:      "test.tamper.event.v1",
-			SchemaVersion:  1,
-			OccurredAt:     now.Add(time.Duration(i) * time.Millisecond),
-			Actor:          ports.Actor{Type: "user", ID: "actor-tamper"},
-			Payload:        json.RawMessage(fmt.Sprintf(`{"index":%d}`, i)),
+			TenantID:      "tenant-tamper",
+			StreamID:      "stream-tamper",
+			EventType:     "test.tamper.event.v1",
+			SchemaVersion: 1,
+			OccurredAt:    now.Add(time.Duration(i) * time.Millisecond),
+			Actor:         ports.Actor{Type: "user", ID: "actor-tamper"},
+			Payload:       json.RawMessage(fmt.Sprintf(`{"index":%d}`, i)),
 		}
 	}
 	_, err = srcStore.Append(context.Background(), events)
@@ -603,13 +603,13 @@ func TestRestoreParseError(t *testing.T) {
 	for i := 0; i < N; i++ {
 		events[i] = ports.RawEvent{
 			EventID:       fmt.Sprintf("parse-err-evt-%04d", i),
-			TenantID:       "tenant-parse",
-			StreamID:       "stream-parse",
-			EventType:      "test.parse.event.v1",
-			SchemaVersion:  1,
-			OccurredAt:     now.Add(time.Duration(i) * time.Millisecond),
-			Actor:          ports.Actor{Type: "user", ID: "actor-parse"},
-			Payload:        json.RawMessage(fmt.Sprintf(`{"index":%d}`, i)),
+			TenantID:      "tenant-parse",
+			StreamID:      "stream-parse",
+			EventType:     "test.parse.event.v1",
+			SchemaVersion: 1,
+			OccurredAt:    now.Add(time.Duration(i) * time.Millisecond),
+			Actor:         ports.Actor{Type: "user", ID: "actor-parse"},
+			Payload:       json.RawMessage(fmt.Sprintf(`{"index":%d}`, i)),
 		}
 	}
 	_, err = srcStore.Append(context.Background(), events)
@@ -673,9 +673,9 @@ func BenchmarkConcurrentReads(b *testing.B) {
 	defer store.Close()
 
 	const (
-		numStreams     = 10
+		numStreams      = 10
 		eventsPerStream = 100
-		numReaders     = 4
+		numReaders      = 4
 	)
 
 	// Pre-populate with events.

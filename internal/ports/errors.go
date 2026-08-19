@@ -29,4 +29,8 @@ var (
 	ErrTypeMismatch     = errors.New("ports: edge type is immutable")
 	ErrEndpointNotFound = errors.New("ports: edge endpoint not found")
 	ErrUnboundedQuery   = errors.New("ports: query must be bounded (max depth/nodes/edges > 0)")
+
+	// ErrCommandMismatch reports a command_id collision with a different payload.
+	// Same payload → cached receipt (Duplicate=true); different payload → ErrCommandMismatch.
+	ErrCommandMismatch = errors.New("ports: command_id reused with different payload")
 )

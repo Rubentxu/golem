@@ -68,6 +68,36 @@ type BackupHandle struct {
 	SizeBytes int64  `json:"size_bytes"`
 }
 
+// CommandRecord describes a command for the optional CommandJournal interface.
+type CommandRecord struct {
+	CommandID     string
+	CommandKind   string
+	TenantID      TenantID
+	Actor         Actor
+	CorrelationID string
+	Fingerprint   string `json:",omitempty"`
+}
+
+// CommandJournalReceipt acknowledges a command journal append.
+type CommandJournalReceipt struct {
+	CommandID   string
+	EventIDs    []string
+	Position    StreamPosition
+	Tenant      TenantID
+	Actor       Actor
+	Correlation string
+	Duplicate   bool
+}
+
+// CommandJournal is the optional command-journal port.
+// Journals that implement this interface provide atomic append with
+// idempotent retry: same command_id with same payload returns a cached
+// receipt (Duplicate=true); same command_id with different payload returns
+// ErrCommandMismatch.
+type CommandJournal interface {
+	AppendCommand(ctx context.Context, cmd CommandRecord, events []RawEvent) (CommandJournalReceipt, error)
+}
+
 // JournalStoreBackupErrors are the error sentinels for DR operations.
 var (
 	// ErrBackupInProgress is returned when a backup is already running.
