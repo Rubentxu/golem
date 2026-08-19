@@ -6,6 +6,7 @@
 package bbolt
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -463,6 +464,110 @@ func (s *Store) Backup(ctx context.Context) (ports.BackupHandle, error) {
 		Digest:    digestStr,
 		SizeBytes: stat.Size(),
 	}, nil
+}
+
+// Restore restores the journal from a backup handle (REQ-DR-001).
+// It reads the NDJSON backup file, verifies the sha256 digest, and replays
+// all events into the journal atomically under the write mutex.
+//
+// Restore is the inverse of Backup: the backup format is NDJSON (one JSON-encoded
+// event per line, as written by Backup). The digest is computed over the raw
+// file bytes and compared against handle.Digest (with "sha256:" prefix stripped
+// if present).
+//
+// Restore rejects non-empty target journals (ErrRestoreNotEmpty) and returns
+// ErrRestoreMismatch when the digest verification fails. On parse error the
+// journal is left empty (all writes happen in a single db.Update tx).
+func (s *Store) Restore(ctx context.Context, handle ports.BackupHandle) error {
+	_ = ctx
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Reject non-empty journal.
+	head, err := s.readHeadRLocked()
+	if err != nil {
+		return fmt.Errorf("restore check head: %w", err)
+	}
+	if head > 0 {
+		return ports.ErrRestoreNotEmpty
+	}
+
+	if handle.Path == "" {
+		return fmt.Errorf("restore: backup handle has no path")
+	}
+
+	// Open backup file and compute digest incrementally.
+	f, err := os.Open(handle.Path)
+	if err != nil {
+		return fmt.Errorf("restore open: %w", err)
+	}
+	defer f.Close()
+
+	hasher := sha256.New()
+	_, err = io.Copy(hasher, f)
+	if err != nil {
+		return fmt.Errorf("restore read: %w", err)
+	}
+
+	computed := hasher.Sum(nil)
+	// handle.Digest has "sha256:" prefix; strip it for comparison.
+	wantHex := handle.Digest
+	if strings.HasPrefix(wantHex, "sha256:") {
+		wantHex = wantHex[len("sha256:"):]
+	}
+	gotHex := fmt.Sprintf("%x", computed)
+	if gotHex != wantHex {
+		return fmt.Errorf("%w: want %s, got %s", ports.ErrRestoreMismatch, wantHex, gotHex)
+	}
+
+	// Digest verified. Re-open and replay into journal under single tx.
+	f2, err := os.Open(handle.Path)
+	if err != nil {
+		return fmt.Errorf("restore reopen: %w", err)
+	}
+	defer f2.Close()
+
+	return s.db.Update(func(tx *bolt.Tx) error {
+		scanner := bufio.NewScanner(f2)
+		var lineNum int
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			if len(line) == 0 {
+				continue
+			}
+			var e ports.RawEvent
+			if err := json.Unmarshal(line, &e); err != nil {
+				return fmt.Errorf("restore parse line %d: %w", lineNum, err)
+			}
+			// Use appendOneEvent directly inside the tx — it writes event
+			// data directly into the tx's buckets without needing a separate
+			// db.Update wrapper.
+			_, err := s.appendOneEvent(tx, e, nil)
+			if err != nil {
+				return fmt.Errorf("restore append event %s: %w", e.EventID, err)
+			}
+			lineNum++
+		}
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("restore scan: %w", err)
+		}
+		return nil
+	})
+}
+
+// readHeadRLocked reads head; caller must hold s.mu.
+func (s *Store) readHeadRLocked() (uint64, error) {
+	var head uint64
+	err := s.db.View(func(tx *bolt.Tx) error {
+		h, err := readHead(tx)
+		if err != nil {
+			return err
+		}
+		head = h
+		return nil
+	})
+	return head, err
 }
 
 // validateEvent checks envelope invariants before persisting.

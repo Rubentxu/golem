@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -379,6 +380,284 @@ func TestConcurrentReadWrite(t *testing.T) {
 			}
 			seenIDs[e.EventID] = true
 		}
+	}
+}
+
+// TestRestore verifies that Restore correctly inverse-Backups a journal.
+func TestRestore(t *testing.T) {
+	// --- Set up source store and populate 100 events ---
+	srcDir := t.TempDir()
+	srcStore, err := NewJournal(srcDir+"/journal.db", Options{})
+	if err != nil {
+		t.Fatalf("NewJournal source: %v", err)
+	}
+
+	const N = 100
+	srcEvents := make([]ports.RawEvent, N)
+	now := time.Now()
+	for i := 0; i < N; i++ {
+		srcEvents[i] = ports.RawEvent{
+			EventID:       fmt.Sprintf("restore-evt-%04d", i),
+			TenantID:       "tenant-restore",
+			StreamID:       "stream-restore",
+			EventType:      "test.restore.event.v1",
+			SchemaVersion:  1,
+			OccurredAt:     now.Add(time.Duration(i) * time.Millisecond),
+			Actor:          ports.Actor{Type: "user", ID: "actor-restore"},
+			Payload:        json.RawMessage(fmt.Sprintf(`{"index":%d}`, i)),
+		}
+	}
+	_, err = srcStore.Append(context.Background(), srcEvents)
+	if err != nil {
+		t.Fatalf("Append source: %v", err)
+	}
+
+	// Backup the source.
+	handle, err := srcStore.Backup(context.Background())
+	if err != nil {
+		t.Fatalf("Backup: %v", err)
+	}
+	srcStore.Close()
+
+	// --- Open fresh target store at different path ---
+	tgtDir := t.TempDir()
+	tgtStore, err := NewJournal(tgtDir+"/journal.db", Options{})
+	if err != nil {
+		t.Fatalf("NewJournal target: %v", err)
+	}
+	defer tgtStore.Close()
+
+	// Verify target is empty.
+	h, err := tgtStore.Head(context.Background())
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	if h != 0 {
+		t.Fatalf("target should be empty, got head=%d", h)
+	}
+
+	// --- Restore ---
+	err = tgtStore.Restore(context.Background(), handle)
+	if err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+
+	// Verify Head == N.
+	h, err = tgtStore.Head(context.Background())
+	if err != nil {
+		t.Fatalf("Head after restore: %v", err)
+	}
+	if h != ports.StreamPosition(N) {
+		t.Errorf("Head after restore: got %d, want %d", h, N)
+	}
+
+	// Verify Replay returns same events in same order.
+	replayed, lastPos, err := tgtStore.Replay(context.Background(), 0, 0)
+	if err != nil {
+		t.Fatalf("Replay: %v", err)
+	}
+	if len(replayed) != N {
+		t.Errorf("Replay count: got %d, want %d", len(replayed), N)
+	}
+	if lastPos != ports.StreamPosition(N) {
+		t.Errorf("lastPos: got %d, want %d", lastPos, N)
+	}
+	for i := 0; i < N; i++ {
+		if replayed[i].EventID != srcEvents[i].EventID {
+			t.Errorf("event[%d]: got EventID=%s, want %s", i, replayed[i].EventID, srcEvents[i].EventID)
+		}
+	}
+}
+
+// TestRestoreIdempotent verifies that calling Restore on a non-empty journal
+// returns ErrRestoreNotEmpty.
+func TestRestoreIdempotent(t *testing.T) {
+	srcDir := t.TempDir()
+	srcStore, err := NewJournal(srcDir+"/journal.db", Options{})
+	if err != nil {
+		t.Fatalf("NewJournal source: %v", err)
+	}
+	const N = 50
+	events := make([]ports.RawEvent, N)
+	now := time.Now()
+	for i := 0; i < N; i++ {
+		events[i] = ports.RawEvent{
+			EventID:       fmt.Sprintf("idempotent-evt-%04d", i),
+			TenantID:       "tenant-idempotent",
+			StreamID:       "stream-idempotent",
+			EventType:      "test.idempotent.event.v1",
+			SchemaVersion:  1,
+			OccurredAt:     now.Add(time.Duration(i) * time.Millisecond),
+			Actor:          ports.Actor{Type: "user", ID: "actor-idempotent"},
+			Payload:        json.RawMessage(fmt.Sprintf(`{"index":%d}`, i)),
+		}
+	}
+	_, err = srcStore.Append(context.Background(), events)
+	if err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	handle, err := srcStore.Backup(context.Background())
+	if err != nil {
+		t.Fatalf("Backup: %v", err)
+	}
+	srcStore.Close()
+
+	// Restore into a non-empty journal.
+	tgtDir := t.TempDir()
+	tgtStore, err := NewJournal(tgtDir+"/journal.db", Options{})
+	if err != nil {
+		t.Fatalf("NewJournal target: %v", err)
+	}
+	defer tgtStore.Close()
+
+	// Add one event to make the target non-empty.
+	_, err = tgtStore.Append(context.Background(), []ports.RawEvent{
+		{
+			EventID:       "pre-existing-evt",
+			TenantID:       "tenant-idempotent",
+			StreamID:       "stream-idempotent",
+			EventType:      "test.idempotent.event.v1",
+			SchemaVersion:  1,
+			OccurredAt:     time.Now(),
+			Actor:          ports.Actor{Type: "user", ID: "actor-idempotent"},
+			Payload:        json.RawMessage(`{"index":999}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Append target: %v", err)
+	}
+
+	// Restore should return ErrRestoreNotEmpty.
+	err = tgtStore.Restore(context.Background(), handle)
+	if !errors.Is(err, ports.ErrRestoreNotEmpty) {
+		t.Errorf("Restore on non-empty: got %v, want %v", err, ports.ErrRestoreNotEmpty)
+	}
+}
+
+// TestRestoreDigestMismatch verifies that restoring a tampered backup file
+// returns ErrRestoreMismatch.
+func TestRestoreDigestMismatch(t *testing.T) {
+	srcDir := t.TempDir()
+	srcStore, err := NewJournal(srcDir+"/journal.db", Options{})
+	if err != nil {
+		t.Fatalf("NewJournal source: %v", err)
+	}
+	const N = 20
+	events := make([]ports.RawEvent, N)
+	now := time.Now()
+	for i := 0; i < N; i++ {
+		events[i] = ports.RawEvent{
+			EventID:       fmt.Sprintf("tamper-evt-%04d", i),
+			TenantID:       "tenant-tamper",
+			StreamID:       "stream-tamper",
+			EventType:      "test.tamper.event.v1",
+			SchemaVersion:  1,
+			OccurredAt:     now.Add(time.Duration(i) * time.Millisecond),
+			Actor:          ports.Actor{Type: "user", ID: "actor-tamper"},
+			Payload:        json.RawMessage(fmt.Sprintf(`{"index":%d}`, i)),
+		}
+	}
+	_, err = srcStore.Append(context.Background(), events)
+	if err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	handle, err := srcStore.Backup(context.Background())
+	if err != nil {
+		t.Fatalf("Backup: %v", err)
+	}
+	srcStore.Close()
+
+	// Tamper with the backup file (append a newline to corrupt it).
+	f, err := os.OpenFile(handle.Path, os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		t.Fatalf("OpenFile: %v", err)
+	}
+	fmt.Fprintln(f, "// this corrupts the digest")
+	f.Close()
+
+	// Restore should return ErrRestoreMismatch.
+	tgtDir := t.TempDir()
+	tgtStore, err := NewJournal(tgtDir+"/journal.db", Options{})
+	if err != nil {
+		t.Fatalf("NewJournal target: %v", err)
+	}
+	defer tgtStore.Close()
+
+	err = tgtStore.Restore(context.Background(), handle)
+	if !errors.Is(err, ports.ErrRestoreMismatch) {
+		t.Errorf("Restore tampered: got %v, want %v", err, ports.ErrRestoreMismatch)
+	}
+}
+
+// TestRestoreParseError verifies that a valid-digest but invalid-NDJSON backup
+// returns a parse error and leaves the journal empty.
+func TestRestoreParseError(t *testing.T) {
+	srcDir := t.TempDir()
+	srcStore, err := NewJournal(srcDir+"/journal.db", Options{})
+	if err != nil {
+		t.Fatalf("NewJournal source: %v", err)
+	}
+	const N = 10
+	events := make([]ports.RawEvent, N)
+	now := time.Now()
+	for i := 0; i < N; i++ {
+		events[i] = ports.RawEvent{
+			EventID:       fmt.Sprintf("parse-err-evt-%04d", i),
+			TenantID:       "tenant-parse",
+			StreamID:       "stream-parse",
+			EventType:      "test.parse.event.v1",
+			SchemaVersion:  1,
+			OccurredAt:     now.Add(time.Duration(i) * time.Millisecond),
+			Actor:          ports.Actor{Type: "user", ID: "actor-parse"},
+			Payload:        json.RawMessage(fmt.Sprintf(`{"index":%d}`, i)),
+		}
+	}
+	_, err = srcStore.Append(context.Background(), events)
+	if err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	handle, err := srcStore.Backup(context.Background())
+	if err != nil {
+		t.Fatalf("Backup: %v", err)
+	}
+	srcStore.Close()
+
+	// Replace backup content with valid digest but invalid JSON lines.
+	// We need to compute a new sha256 for the corrupted content.
+	// Write some NDJSON lines that look valid but have bad payloads.
+	validLines := "{\"event_id\":\"evt-A\",\"tenant_id\":\"tenant\",\"stream_id\":\"s\",\"event_type\":\"test.parse.err.v1\",\"schema_version\":1,\"occurred_at\":\"2024-01-01T00:00:00Z\",\"actor\":{\"type\":\"user\",\"id\":\"a\"},\"payload\":{}}\n"
+	corruptedContent := validLines + "this is not json at all\n"
+
+	// Write corrupted content and compute its digest.
+	f2, err := os.Create(handle.Path)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	hasher := sha256.New()
+	hasher.Write([]byte(corruptedContent))
+	corruptedDigest := fmt.Sprintf("sha256:%x", hasher.Sum(nil))
+	f2.WriteString(corruptedContent)
+	f2.Close()
+
+	// Update handle digest to match corrupted content.
+	handle.Digest = corruptedDigest
+
+	tgtDir := t.TempDir()
+	tgtStore, err := NewJournal(tgtDir+"/journal.db", Options{})
+	if err != nil {
+		t.Fatalf("NewJournal target: %v", err)
+	}
+	defer tgtStore.Close()
+
+	// Restore should return a parse error.
+	err = tgtStore.Restore(context.Background(), handle)
+	if err == nil {
+		t.Fatalf("Restore with bad JSON: expected error, got nil")
+	}
+	// Journal should be empty (all-or-nothing).
+	h, _ := tgtStore.Head(context.Background())
+	if h != 0 {
+		t.Errorf("journal after parse error: got head=%d, want 0 (empty)", h)
 	}
 }
 
