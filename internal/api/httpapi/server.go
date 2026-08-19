@@ -129,6 +129,7 @@ type Server struct {
 	commands CommandSubmitter
 	graph    ports.GraphStore
 	streams  StreamVersionReader
+	journal  ports.JournalStore // underlying journal for JournalStreamReader creation in routesWithMounts
 	search   SearchReader
 	ingest   IngestService
 	packs    PackRegistry
@@ -219,7 +220,11 @@ func (s *Server) Handler() http.Handler {
 }
 
 // routesWithMounts registers routes from all HTTPMounts and returns the mux.
-// This replaces the legacy routes() function.
+// It also registers legacy routes not covered by any mount (requirements, search,
+// projects, planning, scm, ci, ingest) so that tests using NewWithMounts can still
+// access legacy endpoints. Routes already covered by mounts (work-items,
+// work-types, test/runs, releases, trace, healthz, etc.) are NOT registered here
+// to avoid conflicts with mount-based routes.
 func (s *Server) routesWithMounts() http.Handler {
 	mux := http.NewServeMux()
 	s.routeLabels = make(map[string]string)
@@ -234,9 +239,9 @@ func (s *Server) routesWithMounts() http.Handler {
 		// Other deps fields are nil for now; T10 wires them fully.
 	}
 
-	// If streams is also a ports.JournalStore, wrap it as JournalStreamReader.
-	if js, ok := s.streams.(ports.JournalStore); ok {
-		deps.JournalStreamReader = ports.NewJournalStreamReaderOverJournalStore(js)
+	// If s.journal is available, wrap it as JournalStreamReader.
+	if s.journal != nil {
+		deps.JournalStreamReader = ports.NewJournalStreamReaderOverJournalStore(s.journal)
 	}
 
 	for _, m := range s.mounts {
@@ -245,6 +250,23 @@ func (s *Server) routesWithMounts() http.Handler {
 			panic("mount " + m.Pattern() + ": " + err.Error())
 		}
 	}
+
+	// Register legacy routes not covered by any mount.
+	// Routes covered by mounts: PlatformMount (healthz, readyz, status, metrics),
+	// WorkMount (work-items, work-types), VerificationMount (test/runs, trace),
+	// ReleaseMount (releases, blast-radius), AdminMount (admin/*).
+	mux.HandleFunc("POST /api/v1/packs/activate", s.handleActivatePack)
+	mux.HandleFunc("POST /api/v1/requirements", s.handleCreateRequirement)
+	mux.HandleFunc("GET /api/v1/requirements/{id}", s.handleGetRequirement)
+	mux.HandleFunc("POST /api/v1/graph/neighborhood", s.handleNeighborhood)
+	mux.HandleFunc("GET /api/v1/search", s.handleSearch)
+	mux.HandleFunc("POST /api/v1/projects", s.handleCreateProject)
+	mux.HandleFunc("POST /api/v1/planning/iterations", s.handleCreateIteration)
+	mux.HandleFunc("POST /api/v1/planning/milestones", s.handleCreateMilestone)
+	mux.HandleFunc("GET /api/v1/planning/iterations/{id}/board", s.handleIterationBoard)
+	mux.HandleFunc("POST /api/v1/scm/commits", s.handleObserveCommit)
+	mux.HandleFunc("POST /api/v1/ci/builds", s.handleCompleteBuild)
+	mux.HandleFunc("POST /api/v1/ingest/{provider}", s.handleIngest)
 
 	return mux
 }

@@ -26,6 +26,7 @@ func MountDepsForRT(rt *runtime.Runtime) httpapi.MountDeps {
 		GraphStore:                rt.Graph,
 		GraphNodeFetcher:          ports.NewGraphNodeFetcherOverGraphStore(rt.Graph),
 		JournalStreamReader:       ports.NewJournalStreamReaderOverJournalStore(rt.Journal),
+		Journal:                  rt.Journal,
 		EntityRefReader:           ports.NewEntityRefReaderOverGraphStore(rt.Graph),
 		WorkItemReader:            nil,
 		WorkItemWriter:            nil,

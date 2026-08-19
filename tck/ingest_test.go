@@ -24,6 +24,7 @@ import (
 	appver "github.com/Rubentxu/golem/internal/application/verification"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
 	"github.com/Rubentxu/golem/internal/ports"
+	"github.com/Rubentxu/golem/tck"
 )
 
 // TestIngestAndReleaseGate proves the provider event sinks (external
@@ -54,7 +55,7 @@ func TestIngestAndReleaseGate(t *testing.T) {
 	go func() { _ = rt.Run(ctx, 10, 5*time.Millisecond) }()
 
 	ingestSvc := ingest.New(rt.Bus)
-	srv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).
+	srv := httptest.NewServer(httpapi.NewWithMounts(rt.Bus, tck.MountDepsForRT(rt), tck.NewMountSet(rt)).
 		WithSearch(rt.Search).WithIngest(ingestSvc).Handler())
 	defer srv.Close()
 	client := srv.Client()

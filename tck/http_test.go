@@ -20,6 +20,7 @@ import (
 	"github.com/Rubentxu/golem/internal/application/runtime"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
 	"github.com/Rubentxu/golem/internal/ports"
+	"github.com/Rubentxu/golem/tck"
 )
 
 // TestHTTPVerticalSlice is the first demo of START_HERE, over real HTTP:
@@ -46,7 +47,7 @@ func TestHTTPVerticalSlice(t *testing.T) {
 	defer cancel()
 	go func() { _ = rt.Run(ctx, 10, 5*time.Millisecond) }()
 
-	srv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).Handler())
+	srv := httptest.NewServer(httpapi.NewWithMounts(rt.Bus, tck.MountDepsForRT(rt), tck.NewMountSet(rt)).Handler())
 	defer srv.Close()
 
 	post := func(tenant, idemKey, body string) (int, httpapi.Receipt) {
@@ -177,11 +178,8 @@ func TestWorkRoutesResponseParity(t *testing.T) {
 	legacySrv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).Handler())
 	defer legacySrv.Close()
 
-	// Build mount-based server with WorkMount.
-	// Note: During T08, WithMounts is set but Handler() doesn't use it yet.
-	// The actual mount-based routing is tested here directly using the WorkMount.
-	mountSrv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).
-		WithMounts([]httpapi.HTTPMount{&httpapi.WorkMount{}}).Handler())
+	// Build mount-based server with full mount set.
+	mountSrv := httptest.NewServer(httpapi.NewWithMounts(rt.Bus, tck.MountDepsForRT(rt), tck.NewMountSet(rt)).Handler())
 	defer mountSrv.Close()
 
 	tenant := "t_parity"
@@ -308,9 +306,8 @@ func TestRouteLabelsDerivedFromMounts(t *testing.T) {
 	defer cancel()
 	go func() { _ = rt.Run(ctx, 10, 5*time.Millisecond) }()
 
-	// Build mount-based server with WorkMount.
-	srv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).
-		WithMounts([]httpapi.HTTPMount{&httpapi.WorkMount{}}).Handler())
+	// Build mount-based server with full mount set.
+	srv := httptest.NewServer(httpapi.NewWithMounts(rt.Bus, tck.MountDepsForRT(rt), tck.NewMountSet(rt)).Handler())
 	defer srv.Close()
 
 	// The 26 route patterns from the original muxMatch table.

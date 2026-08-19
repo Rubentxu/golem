@@ -44,6 +44,7 @@ type MountDeps struct {
 	GraphStore                ports.GraphStore          // for neighborhood/traversal queries
 	GraphNodeFetcher          ports.GraphNodeFetcher    // kernel narrow port: point read on graph
 	JournalStreamReader       ports.JournalStreamReader // kernel narrow port: stream read on journal
+	Journal                   ports.JournalStore        // underlying journal for JournalStreamReader creation
 	EntityRefReader           ports.EntityRefReader
 	WorkItemReader            WorkItemReader
 	WorkItemWriter            WorkItemWriter
@@ -263,8 +264,13 @@ func NewWithMounts(bus CommandSubmitter, deps MountDeps, mounts []HTTPMount) *Se
 	s := &Server{
 		commands: bus,
 		obs:      obs.Fill(deps.Observability),
+		graph:    deps.GraphStore,
+		streams:  deps.JournalStreamReader,
+		journal:  deps.Journal,
+		mounts:   mounts,
 	}
 	// Wire mounts into a temporary mux to capture the mount's routes.
+	// The mounts are also stored in s.mounts so that Handler() uses routesWithMounts().
 	mux := http.NewServeMux()
 	for _, m := range mounts {
 		if err := m.Mount(mux, deps); err != nil {
