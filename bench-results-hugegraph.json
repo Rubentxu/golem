@@ -1,0 +1,32 @@
+{
+  "db": "hugegraph",
+  "url": "http://localhost:8080",
+  "workloads": [
+    "W1_BulkLoad",
+    "W5_Mutation"
+  ],
+  "results": [
+    {
+      "name": "W1_BulkLoad",
+      "duration_ms": 16491.2330799998,
+      "ops": 6000,
+      "throughput": 363.82967670723576,
+      "p50_ms": 0,
+      "p95_ms": 0,
+      "p99_ms": 0,
+      "errors": 0,
+      "truncated": false
+    },
+    {
+      "name": "W5_Mutation",
+      "duration_ms": 60004.37638600124,
+      "ops": 13103,
+      "throughput": 218.36740566571194,
+      "p50_ms": 4.289761000109138,
+      "p95_ms": 6.312631001492264,
+      "p99_ms": 7.015863000560785,
+      "errors": 13026,
+      "truncated": false
+    }
+  ]
+}

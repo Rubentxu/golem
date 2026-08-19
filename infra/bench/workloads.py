@@ -73,6 +73,9 @@ def make_node_attrs(kind: str) -> dict:
             attrs[p] = str(random.randint(1, 40))
         elif "version" in p:
             attrs[p] = f"{random.randint(0,5)}.{random.randint(0,20)}.{random.randint(0,99)}"
+        elif "created_at" in p or "timestamp" in p or "_at" in p:
+            # datetime property — generate a recent timestamp
+            attrs[p] = "2024-01-01T00:00:00Z"
         elif "name" in p or "title" in p:
             attrs[p] = f"{kind.lower()}-{uuid.uuid4().hex[:8]}"
         else:
@@ -289,10 +292,13 @@ def w4_point_read(client, *, reads: int = 10_000) -> WorkloadResult:
 
 # ── Mutation rate ──────────────────────────────────────────────────────────
 
-def w5_mutation_rate(client, *, target_rate: int = 100, duration_s: int = 60) -> WorkloadResult:
+def w5_mutation_rate(client, *, target_rate: int = 100, duration_s: int = 60,
+                     no_throttle: bool = False) -> WorkloadResult:
     """
-    W5: Mutation rate — sustains `target_rate` ops/sec for `duration_s` seconds.
-    Measures write throughput under sustained load.
+    W5: Mutation rate — measures sustained write throughput.
+
+    When no_throttle=True, runs at maximum speed to measure true DB capacity.
+    When no_throttle=False, enforces target_rate to simulate real-world load.
     """
     all_nodes = _sample_node_ids(client, 200)
     if not all_nodes:
@@ -326,18 +332,19 @@ def w5_mutation_rate(client, *, target_rate: int = 100, duration_s: int = 60) ->
                     "kind": "upsert_edge",
                     "target": new_edge_id(),
                     "data": {"type": etype, "source": src, "target": tgt,
-                            "attributes": make_edge_attrs(etype)},
+                             "attributes": make_edge_attrs(etype)},
                 }])
             ops_count += 1
             latencies.append((time.perf_counter() - t_op_start) * 1000)
         except Exception:
             errors += 1
 
-        # Throttle to target rate
-        elapsed = time.perf_counter() - t_op_start
-        sleep_time = interval_s - elapsed
-        if sleep_time > 0:
-            time.sleep(sleep_time)
+        # Throttle to target rate (skip when no_throttle=True)
+        if not no_throttle:
+            elapsed = time.perf_counter() - t_op_start
+            sleep_time = interval_s - elapsed
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
     total_duration_ms = (time.perf_counter() - t_start) * 1000
     throughput = ops_count / (total_duration_ms / 1000)

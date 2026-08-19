@@ -12,6 +12,7 @@ Ref: https://dgraph.io/docs/
 """
 
 import json
+import time
 import uuid
 from typing import Any
 
@@ -23,11 +24,53 @@ from ..domain import NODE_KIND_DEFS, EDGE_TYPE_DEFS
 class DgraphClient:
     """Dgraph JSON mutation client mapped to Golem graph operations."""
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, commit_now: bool = True, flush_interval_s: float = 0.0):
         self.url = url.rstrip("/")
         self.session = requests.Session()
         self.session.headers["Content-Type"] = "application/json"
         self.schema = self._build_schema()
+        self._commit_now = commit_now
+        self._buffer: list[dict] = []
+        self._flush_interval_s = flush_interval_s
+        self._last_flush_time = time.perf_counter()
+
+    def apply_ops(self, ops: list[dict], commit_now: bool | None = None) -> int:
+        """Apply a batch of operations.
+
+        When commit_now is None, uses the client's default (from __init__).
+        When commit_now=False, mutations are buffered and flushed
+        when buffer reaches 100 items, when flush_interval_s elapsed,
+        or when flush() is called.
+        """
+        use_commit_now = commit_now if commit_now is not None else self._commit_now
+        revision = 0
+
+        for op in ops:
+            kind = op.get("kind")
+            target = op.get("target")
+            data = op.get("data", {})
+
+            if kind == "upsert_node":
+                node = self._build_node(target, data)
+                self._buffer.append({"set": [node]})
+                revision = data.get("attributes", {}).get("revision", 1)
+            elif kind == "upsert_edge":
+                edge = self._build_edge(target, data)
+                self._buffer.append({"set": [edge]})
+                revision = data.get("attributes", {}).get("revision", 1)
+            elif kind == "remove_node":
+                self._remove_node(target)
+            elif kind == "remove_edge":
+                self._remove_edge(target)
+
+        if not use_commit_now:
+            elapsed = time.perf_counter() - self._last_flush_time
+            if len(self._buffer) >= 100 or (self._flush_interval_s > 0 and elapsed >= self._flush_interval_s):
+                self._flush()
+        else:
+            self._flush()
+
+        return revision
 
     # ── Health check ──────────────────────────────────────────────────────────
 
@@ -89,29 +132,29 @@ class DgraphClient:
 
     # ── Graph operations ─────────────────────────────────────────────────────
 
-    def apply_ops(self, ops: list[dict]) -> int:
-        revision = 0
-        for op in ops:
-            kind = op.get("kind")
-            target = op.get("target")
-            data = op.get("data", {})
+    # (apply_ops is defined after __init__ above)
 
-            if kind == "upsert_node":
-                revision = self._upsert_node(target, data)
-            elif kind == "upsert_edge":
-                revision = self._upsert_edge(target, data)
-            elif kind == "remove_node":
-                self._remove_node(target)
-            elif kind == "remove_edge":
-                self._remove_edge(target)
-        return revision
+    def _flush(self) -> None:
+        """Commit all buffered mutations as a single transaction."""
+        if not self._buffer:
+            return
+        payload = {"mutations": self._buffer}
+        r = self.session.post(
+            f"{self.url}/mutate?commitNow=true",
+            json=payload,
+            timeout=60,
+        )
+        r.raise_for_status()
+        self._buffer.clear()
 
-    def _upsert_node(self, node_id: str, data: dict) -> int:
+    def flush(self) -> None:
+        """Public flush — commit buffered mutations."""
+        self._flush()
+
+    def _build_node(self, node_id: str, data: dict) -> dict:
         kind = data.get("kind", "WorkItem")
         attrs = data.get("attributes", {})
         revision = int(attrs.get("revision", 1))
-
-        # JSON mutation format for Dgraph v21+
         node = {
             "id": node_id,
             "dgraph.type": [kind],
@@ -120,23 +163,14 @@ class DgraphClient:
         for p, v in attrs.items():
             if p not in ("kind", "id", "revision"):
                 node[p] = str(v)
+        return node
 
-        r = self.session.post(
-            f"{self.url}/mutate?commitNow=true",
-            json={"set": [node]},
-            timeout=30,
-        )
-        r.raise_for_status()
-        return revision
-
-    def _upsert_edge(self, edge_id: str, data: dict) -> int:
+    def _build_edge(self, edge_id: str, data: dict) -> dict:
         etype = data.get("type", "DEPENDS_ON")
         src = data.get("source")
         tgt = data.get("target")
         attrs = data.get("attributes", {})
         revision = int(attrs.get("revision", 1))
-
-        # Dgraph models edges as nodes with from/to predicates
         edge = {
             "id": edge_id,
             "dgraph.type": [etype],
@@ -147,16 +181,11 @@ class DgraphClient:
         for p, v in attrs.items():
             if p not in ("type", "id", "from", "to", "revision"):
                 edge[p] = str(v)
-
-        r = self.session.post(
-            f"{self.url}/mutate?commitNow=true",
-            json={"set": [edge]},
-            timeout=30,
-        )
-        r.raise_for_status()
-        return revision
+        return edge
 
     def _remove_node(self, node_id: str) -> None:
+        # Flush pending mutations first
+        self._flush()
         # Find uid by id predicate, then delete
         r = self.session.post(
             f"{self.url}/query",
@@ -170,12 +199,13 @@ class DgraphClient:
             return
         uid = nodes[0]["uid"]
         self.session.post(
-            f"{self.url}/mutate?commitNow=true",
+            f"{self.url}/mutate",
             json={"delete": [{"uid": uid}]},
             timeout=10,
         )
 
     def _remove_edge(self, edge_id: str) -> None:
+        self._flush()
         r = self.session.post(
             f"{self.url}/query",
             json={"query": f'{{ edge(func: eq(id, "{edge_id}")) {{ uid }} }}'},
@@ -188,7 +218,7 @@ class DgraphClient:
             return
         uid = edges[0]["uid"]
         self.session.post(
-            f"{self.url}/mutate?commitNow=true",
+            f"{self.url}/mutate",
             json={"delete": [{"uid": uid}]},
             timeout=10,
         )
@@ -384,4 +414,5 @@ class DgraphClient:
         }
 
     def close(self) -> None:
+        self._flush()
         self.session.close()

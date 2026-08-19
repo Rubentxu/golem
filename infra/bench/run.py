@@ -33,13 +33,13 @@ from .workloads import WORKLOADS, WorkloadResult
 
 # ── Client factory ──────────────────────────────────────────────────────────
 
-def new_client(db: str, url: str):
+def new_client(db: str, url: str, buffered: bool = False, flush_interval_s: float = 1.0):
     if db == "hugegraph":
         return HugeGraphClient(url)
     elif db == "nebula":
         return NebulaGraphClient(url)
     elif db == "dgraph":
-        return DgraphClient(url)
+        return DgraphClient(url, commit_now=not buffered, flush_interval_s=flush_interval_s if buffered else 0.0)
     raise ValueError(f"Unknown DB: {db}")
 
 
@@ -47,7 +47,9 @@ def new_client(db: str, url: str):
 
 def run_benchmark(db: str, url: str, workloads: list[str],
                  *, nodes: int = 100_000, edges: int = 500_000,
-                 queries: int = 1000, reads: int = 10_000) -> list[WorkloadResult]:
+                 queries: int = 1000, reads: int = 10_000,
+                 buffered: bool = False,
+                 no_throttle: bool = False) -> list[WorkloadResult]:
     """Full benchmark pipeline: health → clear → create_schema → run workloads."""
     print(f"\n{'='*60}")
     print(f"  Benchmark: {db.upper()}")
@@ -56,7 +58,7 @@ def run_benchmark(db: str, url: str, workloads: list[str],
 
     # 1. Health check
     print("[1/5] Health check...")
-    client = new_client(db, url)
+    client = new_client(db, url, buffered=buffered)
     if not client.health():
         print(f"  ERROR: {db} is not reachable at {url}")
         sys.exit(1)
@@ -84,6 +86,7 @@ def run_benchmark(db: str, url: str, workloads: list[str],
     # 4. Run workloads
     print(f"[4/5] Running workloads ({' '.join(workloads)})...")
     results = []
+    cache_loaded = False
     for wl_name in workloads:
         if wl_name not in WORKLOADS:
             print(f"  WARNING: unknown workload {wl_name}, skipping")
@@ -91,13 +94,31 @@ def run_benchmark(db: str, url: str, workloads: list[str],
         print(f"\n  === {wl_name} ===")
         workload_fn = WORKLOADS[wl_name]
 
-        # Pass size params
-        if wl_name == "W1":
+        # HugeGraph needs cache refreshed after bulk load for read workloads
+        if not cache_loaded and wl_name in ("W1",) and hasattr(client, "refresh_cache"):
+            result = workload_fn(client, nodes=nodes, edges=edges)
+            client.refresh_cache()
+            cache_loaded = True
+        elif not cache_loaded and wl_name in ("W2", "W3", "W4") and hasattr(client, "refresh_cache"):
+            if hasattr(client, "refresh_cache"):
+                client.refresh_cache()
+            cache_loaded = True
+            if wl_name in ("W2", "W3"):
+                result = workload_fn(client, queries=queries)
+            elif wl_name == "W4":
+                result = workload_fn(client, reads=reads)
+            elif wl_name == "W5":
+                result = workload_fn(client, no_throttle=no_throttle)
+            else:
+                result = workload_fn(client)
+        elif wl_name == "W1":
             result = workload_fn(client, nodes=nodes, edges=edges)
         elif wl_name in ("W2", "W3"):
             result = workload_fn(client, queries=queries)
         elif wl_name == "W4":
             result = workload_fn(client, reads=reads)
+        elif wl_name == "W5":
+            result = workload_fn(client, no_throttle=no_throttle)
         else:
             result = workload_fn(client)
 
@@ -258,6 +279,10 @@ def main():
                        help="Number of queries for W2/W3 (default: 1000)")
     parser.add_argument("--reads", type=int, default=10_000,
                        help="Number of reads for W4 point read (default: 10000)")
+    parser.add_argument("--buffered", action="store_true",
+                       help="Buffer mutations and flush in batches (for W5 throughput test)")
+    parser.add_argument("--no-throttle", action="store_true",
+                       help="Run W5 at maximum speed (no rate limiting)")
     parser.add_argument("--tck", action="store_true",
                        help="Run TCK validation before benchmarks")
     parser.add_argument("--output", type=Path,
@@ -273,7 +298,9 @@ def main():
     # Run benchmark
     results = run_benchmark(args.db, args.url, args.workloads,
                            nodes=args.nodes, edges=args.edges,
-                           queries=args.queries, reads=args.reads)
+                           queries=args.queries, reads=args.reads,
+                           buffered=args.buffered,
+                           no_throttle=args.no_throttle)
 
     # Write JSON output
     if args.output:
