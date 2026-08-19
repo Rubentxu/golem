@@ -293,12 +293,15 @@ def w4_point_read(client, *, reads: int = 10_000) -> WorkloadResult:
 # ── Mutation rate ──────────────────────────────────────────────────────────
 
 def w5_mutation_rate(client, *, target_rate: int = 100, duration_s: int = 60,
-                     no_throttle: bool = False) -> WorkloadResult:
+                     no_throttle: bool = False, batch_size: int = 1) -> WorkloadResult:
     """
     W5: Mutation rate — measures sustained write throughput.
 
     When no_throttle=True, runs at maximum speed to measure true DB capacity.
     When no_throttle=False, enforces target_rate to simulate real-world load.
+
+    When batch_size > 1, N ops are sent in a single HTTP request, reducing
+    round-trip overhead. Latency is tracked per-batch, not per-op.
     """
     all_nodes = _sample_node_ids(client, 200)
     if not all_nodes:
@@ -306,52 +309,56 @@ def w5_mutation_rate(client, *, target_rate: int = 100, duration_s: int = 60,
 
     interval_s = 1.0 / target_rate
     ops_count = 0
-    latencies = []
+    batch_latencies = []  # latency per batch (one HTTP round-trip)
     errors = 0
     t_start = time.perf_counter()
     deadline = t_start + duration_s
 
     while time.perf_counter() < deadline:
-        t_op_start = time.perf_counter()
+        t_batch_start = time.perf_counter()
 
-        # Alternate between node and edge mutations
-        op_type = random.choice(["node", "edge"])
-        try:
+        # Build a batch of N ops
+        batch = []
+        for _ in range(batch_size):
+            op_type = random.choice(["node", "edge"])
             if op_type == "node":
                 nid = new_node_id()
-                client.apply_ops([{
+                batch.append({
                     "kind": "upsert_node",
                     "target": nid,
                     "data": {"kind": rand_kind(), "attributes": make_node_attrs(rand_kind())},
-                }])
+                })
             else:
                 src = random.choice(all_nodes)
                 tgt = random.choice(all_nodes)
                 etype = rand_edge_type()
-                client.apply_ops([{
+                batch.append({
                     "kind": "upsert_edge",
                     "target": new_edge_id(),
                     "data": {"type": etype, "source": src, "target": tgt,
                              "attributes": make_edge_attrs(etype)},
-                }])
-            ops_count += 1
-            latencies.append((time.perf_counter() - t_op_start) * 1000)
+                })
+
+        try:
+            client.apply_ops(batch)
+            ops_count += batch_size
+            batch_latencies.append((time.perf_counter() - t_batch_start) * 1000)
         except Exception:
-            errors += 1
+            errors += batch_size
 
         # Throttle to target rate (skip when no_throttle=True)
         if not no_throttle:
-            elapsed = time.perf_counter() - t_op_start
+            elapsed = time.perf_counter() - t_batch_start
             sleep_time = interval_s - elapsed
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
     total_duration_ms = (time.perf_counter() - t_start) * 1000
     throughput = ops_count / (total_duration_ms / 1000)
-    latencies.sort()
-    p50 = latencies[len(latencies)//2] if latencies else 0
-    p95 = latencies[int(len(latencies)*0.95)] if latencies else 0
-    p99 = latencies[int(len(latencies)*0.99)] if latencies else 0
+    batch_latencies.sort()
+    p50 = batch_latencies[len(batch_latencies)//2] if batch_latencies else 0
+    p95 = batch_latencies[int(len(batch_latencies)*0.95)] if batch_latencies else 0
+    p99 = batch_latencies[int(len(batch_latencies)*0.99)] if batch_latencies else 0
 
     return WorkloadResult(
         name="W5_Mutation",

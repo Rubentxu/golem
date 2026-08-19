@@ -49,7 +49,8 @@ def run_benchmark(db: str, url: str, workloads: list[str],
                  *, nodes: int = 100_000, edges: int = 500_000,
                  queries: int = 1000, reads: int = 10_000,
                  buffered: bool = False,
-                 no_throttle: bool = False) -> list[WorkloadResult]:
+                 no_throttle: bool = False,
+                 batch_size: int = 1) -> list[WorkloadResult]:
     """Full benchmark pipeline: health → clear → create_schema → run workloads."""
     print(f"\n{'='*60}")
     print(f"  Benchmark: {db.upper()}")
@@ -108,7 +109,7 @@ def run_benchmark(db: str, url: str, workloads: list[str],
             elif wl_name == "W4":
                 result = workload_fn(client, reads=reads)
             elif wl_name == "W5":
-                result = workload_fn(client, no_throttle=no_throttle)
+                result = workload_fn(client, no_throttle=no_throttle, batch_size=batch_size)
             else:
                 result = workload_fn(client)
         elif wl_name == "W1":
@@ -118,7 +119,7 @@ def run_benchmark(db: str, url: str, workloads: list[str],
         elif wl_name == "W4":
             result = workload_fn(client, reads=reads)
         elif wl_name == "W5":
-            result = workload_fn(client, no_throttle=no_throttle)
+            result = workload_fn(client, no_throttle=no_throttle, batch_size=batch_size)
         else:
             result = workload_fn(client)
 
@@ -283,6 +284,8 @@ def main():
                        help="Buffer mutations and flush in batches (for W5 throughput test)")
     parser.add_argument("--no-throttle", action="store_true",
                        help="Run W5 at maximum speed (no rate limiting)")
+    parser.add_argument("--batch-size", type=int, default=1,
+                       help="Number of ops per batch for W5 mutation rate (default: 1)")
     parser.add_argument("--tck", action="store_true",
                        help="Run TCK validation before benchmarks")
     parser.add_argument("--output", type=Path,
@@ -300,7 +303,8 @@ def main():
                            nodes=args.nodes, edges=args.edges,
                            queries=args.queries, reads=args.reads,
                            buffered=args.buffered,
-                           no_throttle=args.no_throttle)
+                           no_throttle=args.no_throttle,
+                           batch_size=args.batch_size)
 
     # Write JSON output
     if args.output:

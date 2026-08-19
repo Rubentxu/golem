@@ -1,0 +1,56 @@
+{
+  "db": "dgraph",
+  "url": "http://localhost:8100",
+  "workloads": [
+    "W1_BulkLoad",
+    "W2_Neighborhood",
+    "W4_PointRead",
+    "W5_Mutation"
+  ],
+  "results": [
+    {
+      "name": "W1_BulkLoad",
+      "duration_ms": 1348.2209180001519,
+      "ops": 6000,
+      "throughput": 4450.309233370998,
+      "p50_ms": 0,
+      "p95_ms": 0,
+      "p99_ms": 0,
+      "errors": 0,
+      "truncated": false
+    },
+    {
+      "name": "W2_Neighborhood",
+      "duration_ms": 6.646426001680084,
+      "ops": 100,
+      "throughput": 15045.680185820469,
+      "p50_ms": 2.401525001914706,
+      "p95_ms": 3.114604998700088,
+      "p99_ms": 6.646426001680084,
+      "errors": 0,
+      "truncated": false
+    },
+    {
+      "name": "W4_PointRead",
+      "duration_ms": 3.9816890021029394,
+      "ops": 200,
+      "throughput": 50229.94008180184,
+      "p50_ms": 2.49761600207421,
+      "p95_ms": 3.0469730008917395,
+      "p99_ms": 3.642130999651272,
+      "errors": 0,
+      "truncated": false
+    },
+    {
+      "name": "W5_Mutation",
+      "duration_ms": 60002.68739999956,
+      "ops": 266750,
+      "throughput": 4445.6342133769485,
+      "p50_ms": 10.929749998467742,
+      "p95_ms": 13.672871002199827,
+      "p99_ms": 15.672061999794096,
+      "errors": 0,
+      "truncated": false
+    }
+  ]
+}

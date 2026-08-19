@@ -1,0 +1,32 @@
+{
+  "db": "dgraph",
+  "url": "http://localhost:8100",
+  "workloads": [
+    "W1_BulkLoad",
+    "W5_Mutation"
+  ],
+  "results": [
+    {
+      "name": "W1_BulkLoad",
+      "duration_ms": 1316.8299620010657,
+      "ops": 6000,
+      "throughput": 4556.396932890523,
+      "p50_ms": 0,
+      "p95_ms": 0,
+      "p99_ms": 0,
+      "errors": 0,
+      "truncated": false
+    },
+    {
+      "name": "W5_Mutation",
+      "duration_ms": 60009.19814200097,
+      "ops": 276600,
+      "throughput": 4609.293384415434,
+      "p50_ms": 10.562831001152517,
+      "p95_ms": 12.949981002748245,
+      "p99_ms": 15.13695399989956,
+      "errors": 0,
+      "truncated": false
+    }
+  ]
+}
