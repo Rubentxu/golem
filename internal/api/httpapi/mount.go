@@ -14,8 +14,7 @@ import (
 
 // HTTPMount is the interface for HTTP mountable components. Each bounded
 // context implements this interface to register its routes on a shared
-// *http.ServeMux. The mount system replaces the legacy Server.routes() and
-// muxMatch/routeMatches pair.
+// *http.ServeMux. The mount system replaces the legacy Server.routes().
 type HTTPMount interface {
 	// Pattern returns the primary URL prefix for this mount (e.g., "/api/v1/work-items").
 	Pattern() string
@@ -57,6 +56,10 @@ type MountDeps struct {
 
 	mu       sync.Mutex
 	registry map[string]string // pattern → label for middleware
+
+	// routeLabels is an optional pointer to the Server's route labels map.
+	// If set, RegisterRoute also records labels in this map.
+	routeLabels *map[string]string
 }
 
 // WorkItemReader is the narrow read port for work items.
@@ -174,8 +177,11 @@ type TestRun struct {
 // The prefix argument specifies the anchor prefix (primary Pattern() or an
 // AdditionalPattern() from MultiMount). The registered path is <prefix><subpattern>
 // (e.g., "/api/v1/work-items" + "/{id}" = "/api/v1/work-items/{id}").
+// In Go 1.22+, the mux supports method-specific patterns like "GET /path".
 func (d *MountDeps) RegisterRoute(mux *http.ServeMux, method, subpattern, prefix string, h http.HandlerFunc) (effective string, err error) {
 	effective = prefix + subpattern
+	// Go 1.22+ mux uses method-specific patterns.
+	pattern := method + " " + effective
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -187,13 +193,26 @@ func (d *MountDeps) RegisterRoute(mux *http.ServeMux, method, subpattern, prefix
 	// Check for overlap with existing registrations.
 	// Segments are compared; {param} wildcards allow sibling routes.
 	for existing := range d.registry {
-		if segmentsOverlap(effective, existing) {
-			return "", fmt.Errorf("%w: %q conflicts with %q", ErrPatternOverlap, effective, existing)
+		// Extract pattern from existing (skip method prefix).
+		existingParts := strings.SplitN(existing, " ", 2)
+		if len(existingParts) != 2 {
+			continue
+		}
+		existingMethod, existingPattern := existingParts[0], existingParts[1]
+		if existingMethod == method && segmentsOverlap(effective, existingPattern) {
+			return "", fmt.Errorf("%w: %q conflicts with %q", ErrPatternOverlap, effective, existingPattern)
 		}
 	}
 
-	mux.HandleFunc(effective, h)
-	d.registry[effective] = effective
+	// Use Handle (not HandleFunc) with method-specific pattern for Go 1.22+.
+	mux.Handle(pattern, http.HandlerFunc(h))
+	d.registry[pattern] = effective
+
+	// Also record in the Server's route labels map if set.
+	if d.routeLabels != nil {
+		(*d.routeLabels)[effective] = effective
+	}
+
 	return effective, nil
 }
 
