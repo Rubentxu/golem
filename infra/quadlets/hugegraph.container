@@ -1,0 +1,41 @@
+# Apache HugeGraph quadlet — benchmark candidate #1 (ADR-086)
+#
+# HugeGraph includes server + embedded RocksDB backend.
+# Single-node layout, no external dependencies.
+#
+# Instalar:
+#   ln -s infra/quadlets/hugegraph.container ~/.config/containers/systemd/
+#   systemctl --user daemon-reload
+#   systemctl --user start hugegraph
+#
+# Ports: 8080 (Gremlin HTTP), 8090 (HugeStudio), 8081 (HBase)
+# Volume: golem-hugegraph-data persists data between runs
+
+[Unit]
+Description=Apache HugeGraph (golem benchmark candidate #1)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/hugegraph/hugegraph:latest
+ContainerName=golem-hugegraph
+
+# Data volume
+Volume=golem-hugegraph-data:/opt/hugegraph
+
+# Ports
+PublishPort=8080:8080/tcp
+PublishPort=8090:8090/tcp
+PublishPort=8081:8081/tcp
+
+# Health check — Gremlin ping
+HealthCmd=curl -sf http://localhost:8080/graphs/hugegraph || exit 1
+HealthInterval=30s
+HealthRetries=5
+HealthTimeout=15s
+
+Restart=always
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

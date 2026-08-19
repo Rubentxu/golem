@@ -1,165 +1,136 @@
 # Golem Infrastructure — Benchmark Gate (ADR-086)
 #
+# Usa quadlets (systemd unit files para containers).
+# Gestión via `systemctl --user`, no `podman run` directo.
+#
+# Imágenes locales (build con `make build`):
+#   golem-nats:latest
+#   golem-hugegraph:latest
+#   golem-dgraph:latest
+#
 # Targets:
-#   make infra-up              — NATS (dev profile)
-#   make bench-hugegraph-up    — HugeGraph benchmark candidate
-#   make bench-nebula-up       — NebulaGraph benchmark candidate
-#   make bench-dgraph-up       — Dgraph benchmark candidate
-#   make bench-all-up          — All benchmark candidates
-#   make bench-all-down        — Stop all
-#   make bench-hugegraph       — Run full benchmark suite against HugeGraph
-#   make bench-nebula          — Run full benchmark suite against NebulaGraph
-#   make bench-dgraph          — Run full benchmark suite against Dgraph
-#   make bench-status          — Show health of all containers
+#   make build                — build todas las imágenes locales
+#   make up                   — levantar todos via quadlets (systemd)
+#   make down                 — detener todos via quadlets
+#   make status               — estado de todos los quadlets
+#   make logs service=s     — logs de un servicio (e.g. service=nats)
+#
+# Benchmark (requiere infra corriendo):
+#   make bench service=       — ejecutar W1-W6 contra un candidate
+#                             (service=hugegraph|nebula-allinone|dgraph)
+#
+# Instalación de quadlets:
+#   mkdir -p ~/.config/containers/systemd/
+#   ln -s infra/quadlets/*.container ~/.config/containers/systemd/
+#   systemctl --user daemon-reload
 
-.PHONY: help nats-up nats-down nats-logs nats-health
-.PHONY: bench-hugegraph-up bench-hugegraph-down bench-hugegraph bench-hugegraph-logs
-.PHONY: bench-nebula-up bench-nebula-down bench-nebula bench-nebula-logs
-.PHONY: bench-dgraph-up bench-dgraph-down bench-dgraph bench-dgraph-logs
-.PHONY: bench-all-up bench-all-down bench-all bench-status bench-tck
+.PHONY: help build up down status logs bench
 
-PYTHON := python3
-PYTHON_DEPS := -r requirements.txt
+REPO_ROOT := $(shell git -C . rev-parse --show-toplevel 2>/dev/null || echo ".")
+SYSTEMD_DIR := $(HOME)/.config/containers/systemd
 
-# ── Helpers ─────────────────────────────────────────────────────────────────
+# ── Build ─────────────────────────────────────────────────────────────────
 
-_health_url = $(shell echo "$(1)" | sed 's|http://||' | cut -d: -f1)
-_poll = for i in $$(seq 1 30); do \
-	if curl -sf "$(1)" > /dev/null 2>&1; then \
-		echo "$(2) up after $$i attempts"; break; fi; \
-	echo "Waiting for $(2)... ($$i/30)"; sleep 2; \
-done
+build: build-nats build-hugegraph build-dgraph
+	@echo "==> Build complete"
 
-# ── NATS (dev + benchmark transport) ────────────────────────────────────────
-
-nats-up: nats-build
-	@echo "==> Starting NATS (dev profile transport)"
-	podman run -d --name golem-nats \
-		-p 4222:4222 -p 8222:8222 -p 6222:6222 \
-		-v golem-nats-data:/data \
-		golem-nats:latest
-	@$(call _poll,http://localhost:8222/health,NATS)
-
-nats-build:
+build-nats:
+	@echo "==> Building golem-nats:latest"
 	podman build -t golem-nats:latest ./nats
 
-nats-down:
-	-podman stop golem-nats; podman rm golem-nats
-
-nats-logs:
-	podman logs golem-nats
-
-nats-health:
-	@curl -sf http://localhost:8222/health && echo "NATS: healthy" || echo "NATS: DOWN"
-
-# ── HugeGraph ────────────────────────────────────────────────────────────────
-
-bench-hugegraph-up: bench-hugegraph-build
-	@echo "==> Starting HugeGraph (benchmark candidate #1)"
-	podman run -d --name golem-hugegraph \
-		-p 8080:8080 -p 8090:8090 -p 8081:8081 \
-		-v golem-hugegraph-data:/opt/hugegraph \
-		golem-hugegraph:latest
-	@$(call _poll,http://localhost:8080/graphs/hugegraph,HugeGraph)
-
-bench-hugegraph-build:
+build-hugegraph:
+	@echo "==> Building golem-hugegraph:latest"
 	podman build -t golem-hugegraph:latest ./hugegraph
 
-bench-hugegraph-down:
-	-podman stop golem-hugegraph; podman rm golem-hugegraph
-
-bench-hugegraph-logs:
-	podman logs golem-hugegraph
-
-bench-hugegraph: bench-hugegraph-up
-	@echo "==> Running benchmark suite against HugeGraph"
-	cd $(CURDIR)/bench && \
-		$(PYTHON) run.py hugegraph http://localhost:8080 --tck --output ../../bench-results-hugegraph.json
-	@echo "==> Benchmark complete: bench-results-hugegraph.json"
-
-# ── NebulaGraph ──────────────────────────────────────────────────────────────
-
-bench-nebula-up: bench-nebula-build
-	@echo "==> Starting NebulaGraph (benchmark candidate #2)"
-	podman run -d --name golem-nebula \
-		-p 9669:9669 -p 19669:19669 -p 7689:7689 \
-		-v golem-nebula-data:/data \
-		golem-nebula:latest
-	@$(call _poll,http://localhost:19669/status,NebulaGraph)
-
-bench-nebula-build:
-	podman build -t golem-nebula:latest ./nebula
-
-bench-nebula-down:
-	-podman stop golem-nebula; podman rm golem-nebula
-
-bench-nebula-logs:
-	podman logs golem-nebula
-
-bench-nebula: bench-nebula-up
-	@echo "==> Running benchmark suite against NebulaGraph"
-	cd $(CURDIR)/bench && \
-		$(PYTHON) run.py nebula http://localhost:9669 --tck --output ../../bench-results-nebula.json
-	@echo "==> Benchmark complete: bench-results-nebula.json"
-
-# ── Dgraph ──────────────────────────────────────────────────────────────────
-
-bench-dgraph-up: bench-dgraph-build
-	@echo "==> Starting Dgraph (benchmark candidate #3)"
-	podman run -d --name golem-dgraph \
-		-p 8080:8080 -p 9080:9080 -p 8000:8000 \
-		-v golem-dgraph-data:/dgraph \
-		golem-dgraph:latest
-	@$(call _poll,http://localhost:8080/health,Dgraph)
-
-bench-dgraph-build:
+build-dgraph:
+	@echo "==> Building golem-dgraph:latest"
 	podman build -t golem-dgraph:latest ./dgraph
 
-bench-dgraph-down:
-	-podman stop golem-dgraph; podman rm golem-dgraph
+# ── Lifecycle via systemd quadlets ─────────────────────────────────────────
 
-bench-dgraph-logs:
-	podman logs golem-dgraph
+# Asegurar que los symlinks de quadlets existen
+_ensure-quadlets:
+	@for svc in nats hugegraph dgraph nebula-allinone; do \
+		link="$(SYSTEMD_DIR)/$$svc.container"; \
+		if [ ! -e "$$link" ]; then \
+			echo "==> Missing quadlet: $$link"; \
+			echo "   Run: ln -s infra/quadlets/$$svc.container $$link"; \
+			echo "   Then: systemctl --user daemon-reload"; \
+		fi; \
+	done
 
-bench-dgraph: bench-dgraph-up
-	@echo "==> Running benchmark suite against Dgraph"
-	cd $(CURDIR)/bench && \
-		$(PYTHON) run.py dgraph http://localhost:8080 --tck --output ../../bench-results-dgraph.json
-	@echo "==> Benchmark complete: bench-results-dgraph.json"
+up: _ensure-quadlets
+	@echo "==> Starting all golem services via quadlets"
+	systemctl --user start nats
+	systemctl --user start hugegraph
+	systemctl --user start dgraph
+	systemctl --user start nebula-allinone
+	@echo "==> All services started. Check with: make status"
 
-# ── All candidates ──────────────────────────────────────────────────────────
+down:
+	@echo "==> Stopping all golem services"
+	-systemctl --user stop nebula-allinone 2>/dev/null
+	-systemctl --user stop dgraph 2>/dev/null
+	-systemctl --user stop hugegraph 2>/dev/null
+	-systemctl --user stop nats 2>/dev/null
+	@echo "==> All services stopped"
 
-bench-all-up: nats-up bench-hugegraph-up bench-nebula-up bench-dgraph-up
-	@echo "==> All benchmark infrastructure running"
+status:
+	@echo "=== Quadlet Status ==="
+	@for svc in nats hugegraph dgraph nebula-allinone; do \
+		status=$$(systemctl --user is-active $$svc 2>/dev/null || echo "inactive"); \
+		echo "  $$svc: $$status"; \
+	done
 
-bench-all-down: bench-hugegraph-down bench-nebula-down bench-dgraph-down nats-down
-	@echo "==> All containers stopped"
+logs:
+ifneq ($(service),)
+	@echo "==> Logs for $(service):"
+	journalctl --user -u $(service) -n 50 --no-pager
+else
+	@echo "Usage: make logs service=<svc>"
+	@echo "  services: nats, hugegraph, dgraph, nebula-allinone"
+endif
 
-# Run all candidates sequentially (requires infra running)
-bench-all: bench-all-up
-	@echo "==> Running all candidates..."
-	@$(MAKE) bench-hugegraph
-	@$(MAKE) bench-nebula
-	@$(MAKE) bench-dgraph
-	@echo "==> All candidates benchmarked. See bench-results-*.json"
+# ── Health check ──────────────────────────────────────────────────────────
 
-# ── Status ──────────────────────────────────────────────────────────────────
+health:
+	@echo "=== Health Checks ==="
+	@echo -n "  nats:         "; \
+		curl -sf http://localhost:8222/health > /dev/null && echo "OK" || echo "DOWN"
+	@echo -n "  hugegraph:    "; \
+		curl -sf http://localhost:8080/graphs/hugegraph > /dev/null && echo "OK" || echo "DOWN"
+	@echo -n "  dgraph:       "; \
+		curl -sf http://localhost:8080/health > /dev/null && echo "OK" || echo "DOWN"
+	@echo -n "  nebula:       "; \
+		curl -sf http://localhost:19669/status > /dev/null && echo "OK" || echo "DOWN"
 
-bench-status:
-	@echo "=== Benchmark Infrastructure Status ==="
-	@echo "NATS:        $$([ $$(podman ps --format '{{.Names}}' 2>/dev/null | grep -c golem-nats) -gt 0 ] && echo 'UP' || echo 'DOWN')"
-	@echo "HugeGraph:   $$([ $$(podman ps --format '{{.Names}}' 2>/dev/null | grep -c golem-hugegraph) -gt 0 ] && echo 'UP' || echo 'DOWN')"
-	@echo "NebulaGraph: $$([ $$(podman ps --format '{{.Names}}' 2>/dev/null | grep -c golem-nebula) -gt 0 ] && echo 'UP' || echo 'DOWN')"
-	@echo "Dgraph:      $$([ $$(podman ps --format '{{.Names}}' 2>/dev/null | grep -c golem-dgraph) -gt 0 ] && echo 'UP' || echo 'DOWN')"
+# ── Benchmark ──────────────────────────────────────────────────────────────
 
-# ── TCK only ───────────────────────────────────────────────────────────────
+_bench-url = $(if $(findstring hugegraph,$(service)),http://localhost:8080,$(if $(findstring nebula,$(service)),http://localhost:9669,$(if $(findstring dgraph,$(service)),http://localhost:8080,http://localhost:8080)))
 
-bench-tck-%:
-	@echo "==> Running TCK validation on $*"
-	cd $(CURDIR)/bench && \
-		$(PYTHON) run.py $* http://localhost:$(if $(findstring hugegraph,$*),8080,$(if $(findstring nebula,$*),9669,8080)) --tck
+bench: up
+ifneq ($(service),)
+	@echo "==> Running benchmark against $(service) ($(call _bench-url))"
+	@# Ensure service is healthy before running
+	@sleep 5 && make health
+	cd $(REPO_ROOT)/infra/bench && python3 run.py $(service) $(call _bench-url) --tck
+else
+	@echo "Usage: make bench service=hugegraph|nebula-allinone|dgraph"
+	@echo "Example: make bench service=hugegraph"
+endif
 
-# ── Clean ────────────────────────────────────────────────────────────────────
+bench-all: bench-hugegraph bench-dgraph
+bench-hugegraph:
+	@echo "==> Benchmark: HugeGraph"
+	$(MAKE) bench service=hugegraph
+bench-dgraph:
+	@echo "==> Benchmark: Dgraph"
+	$(MAKE) bench service=dgraph
+bench-nebula:
+	@echo "==> Benchmark: NebulaGraph (all-in-one)"
+	$(MAKE) bench service=nebula-allinone
+
+# ── Clean ─────────────────────────────────────────────────────────────────
 
 clean-data:
 	-podman volume rm golem-nats-data golem-hugegraph-data \
@@ -168,32 +139,29 @@ clean-data:
 clean-results:
 	-rm -f bench-results-*.json
 
-# ── Help ─────────────────────────────────────────────────────────────────────
+# ── Help ──────────────────────────────────────────────────────────────────
 
 help:
-	@echo "Golem Infrastructure — Benchmark Gate (ADR-086)"
+	@echo "Golem Infrastructure — Quadlets (ADR-086)"
 	@echo ""
-	@echo "Dev profile:"
-	@echo "  just infra-up         levant NATS (dev profile transport)"
-	@echo "  just infra-down       detener NATS"
+	@echo "Setup (one-time):"
+	@echo "  mkdir -p ~/.config/containers/systemd/"
+	@echo "  ln -s infra/quadlets/*.container ~/.config/containers/systemd/"
+	@echo "  systemctl --user daemon-reload"
 	@echo ""
-	@echo "Benchmark candidates (ADR-086):"
-	@echo "  make bench-hugegraph-up   levantar HugeGraph"
-	@echo "  make bench-nebula-up      levantar NebulaGraph"
-	@echo "  make bench-dgraph-up      levantar Dgraph"
-	@echo "  make bench-all-up         levantar todos"
+	@echo "Lifecycle:"
+	@echo "  make build          build local images"
+	@echo "  make up             start all services (systemd)"
+	@echo "  make down           stop all services"
+	@echo "  make status         show service status"
+	@echo "  make health         check /health endpoints"
+	@echo "  make logs service=<svc>  tail logs"
 	@echo ""
-	@echo "Run benchmarks:"
-	@echo "  make bench-hugegraph      levantar + ejecutar W1-W6 contra HugeGraph"
-	@echo "  make bench-nebula         levantar + ejecutar W1-W6 contra NebulaGraph"
-	@echo "  make bench-dgraph         levantar + ejecutar W1-W6 contra Dgraph"
-	@echo "  make bench-all            ejecutar contra los 3 candidates"
-	@echo ""
-	@echo "Status:"
-	@echo "  make bench-status         show container health"
-	@echo "  make bench-tck-hugegraph TCK validation only"
+	@echo "Benchmark:"
+	@echo "  make bench service=hugegraph       # W1-W6 + TCK"
+	@echo "  make bench service=nebula-allinone # W1-W6 + TCK"
+	@echo "  make bench service=dgraph          # W1-W6 + TCK"
+	@echo "  make bench-all                    # HugeGraph + Dgraph"
 	@echo ""
 	@echo "Cleanup:"
-	@echo "  make bench-all-down       detener todos los containers"
-	@echo "  make clean-data           eliminar volúmenes persistentes"
-	@echo "  make clean-results        eliminar resultados de benchmark"
+	@echo "  make down && make clean-data       # stop + delete volumes"

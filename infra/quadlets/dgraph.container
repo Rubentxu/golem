@@ -1,0 +1,44 @@
+# Dgraph quadlet — benchmark candidate #3 (ADR-086)
+#
+# Dgraph alpha runs the query engine + storage.
+# Single-node layout, no external dependencies.
+#
+# Instalar:
+#   ln -s infra/quadlets/dgraph.container ~/.config/containers/systemd/
+#   systemctl --user daemon-reload
+#   systemctl --user start dgraph
+#
+# Ports: 8080 (HTTP admin), 9080 (gRPC), 8000 (Ratel UI)
+# Volume: golem-dgraph-data persists BadgerDB data
+
+[Unit]
+Description=Dgraph (golem benchmark candidate #3)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/dgraph/dgraph:latest
+ContainerName=golem-dgraph
+
+# Dgraph runs as user 1000 inside container; bind-mount avoids permission issues
+Volume=golem-dgraph-data:/dgraph
+
+# Override default command to run alpha (dgraph running as root is fine for benchmark)
+Exec=/usr/bin/dgraph alpha --bindall=true --encryption=false --force-zero-edge=false
+
+# Ports
+PublishPort=8080:8080/tcp
+PublishPort=9080:9080/tcp
+PublishPort=8000:8000/tcp
+
+# Health check
+HealthCmd=curl -sf http://localhost:8080/health || exit 1
+HealthInterval=30s
+HealthRetries=5
+HealthTimeout=15s
+
+Restart=always
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

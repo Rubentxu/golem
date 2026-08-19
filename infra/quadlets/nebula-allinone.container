@@ -1,0 +1,78 @@
+# NebulaGraph all-in-one quadlet — benchmark candidate #2 (ADR-086)
+#
+# NebulaGraph is a distributed graph DB. For single-node benchmark we run
+# metad + storaged + graphd in one container using a custom entrypoint.
+#
+# IMPORTANT: NebulaGraph's distributed nature means this is a best-effort
+# single-node setup. For production, use proper multi-node deployment.
+#
+# Ports exposed (graphd client API):
+#   9669  — nGQL (NebulaGraph query language)
+#   19669 — HTTP (nebula-console)
+#
+# Ports for inter-service communication (internal):
+#   9559  — metad thrift
+#   9560  — storaged thrift
+#   19559 — metad HTTP
+#   19600 — storaged HTTP
+#
+# Volume: golem-nebula-data persists graph data
+
+[Unit]
+Description=NebulaGraph all-in-one (golem benchmark candidate #2)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/vesoft/nebula-graphd:latest
+ContainerName=golem-nebula
+
+# Custom entrypoint that starts all three services (metad + storaged + graphd)
+# in a single process tree. nebula-entrypoint.sh supports role selection.
+Exec=/bin/bash -c '
+  echo "==> Starting metad..."
+  /usr/local/nebula/bin/nebula-metad \
+    --flagfile=/usr/local/nebula/nebula-metad.conf \
+    --meta_server_addrs=127.0.0.1:9559 \
+    --local_config=true \
+    --cluster_id=1 &
+  sleep 3
+
+  echo "==> Starting storaged..."
+  /usr/local/nebula/bin/nebula-storaged \
+    --flagfile=/usr/local/nebula/nebula-storaged.conf \
+    --meta_server_addrs=127.0.0.1:9559 \
+    --local_config=true &
+  sleep 3
+
+  echo "==> Starting graphd..."
+  /usr/local/nebula/bin/nebula-graphd \
+    --flagfile=/usr/local/nebula/nebula-graphd.conf \
+    --meta_server_addrs=127.0.0.1:9559 \
+    --local_config=true &
+
+  echo "==> All services started. Waiting..."
+  wait
+'
+
+Volume=golem-nebula-data:/data
+
+# Benchmark client connects to graphd
+PublishPort=9669:9669/tcp
+PublishPort=19669:19669/tcp
+
+# Internal RPC ports (not exposed outside container but needed for inter-service)
+PublishPort=9559:9559/tcp
+PublishPort=9560:9560/tcp
+
+# Health check — graphd HTTP status
+HealthCmd=curl -sf http://localhost:19669/status || exit 1
+HealthInterval=30s
+HealthRetries=5
+HealthTimeout=15s
+
+Restart=always
+RestartSec=15s
+
+[Install]
+WantedBy=multi-user.target

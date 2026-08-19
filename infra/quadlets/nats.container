@@ -1,0 +1,45 @@
+# NATS JetStream quadlet for golem (dev transport + benchmark)
+#
+# Instalar:
+#   ln -s infra/quadlets/nats.container ~/.config/containers/systemd/
+#   systemctl --user daemon-reload
+#   systemctl --user start nats
+#
+# Ver logs:
+#   journalctl --user -u nats -f
+#
+# Ports: 4222 (client), 8222 (monitoring), 6222 (cluster)
+# Volume: golem-nats-data persists JetStream data
+
+[Unit]
+Description=NATS JetStream (golem dev transport + benchmark)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/library/nats:2.10-alpine
+ContainerName=golem-nats
+
+# Golem NATS config mounted from repo
+Volume=%h/Proyectos/golang/golem/infra/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+
+# Named volume for JetStream persistence
+Volume=golem-nats-data:/data
+
+# Ports
+PublishPort=4222:4222/tcp
+PublishPort=8222:8222/tcp
+PublishPort=6222:6222/tcp
+
+# Health check — HTTP ping
+HealthCmd=/bin/nats-server -c /etc/nats/nats-server.conf --ping
+HealthInterval=30s
+HealthRetries=3
+HealthTimeout=10s
+
+# Restart policy
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
