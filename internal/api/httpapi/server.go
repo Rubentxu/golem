@@ -147,6 +147,9 @@ type Server struct {
 	// AdminHandlers provides the /admin/* endpoints (ADR-081).
 	AdminHandlers *admin.AdminMux
 
+	// mounts is the list of HTTPMounts to register (from WithMounts).
+	mounts []HTTPMount
+
 	idsOnce sync.Once
 	idgen   ports.IDGenerator
 }
@@ -194,11 +197,26 @@ func (s *Server) WithAdminHandlers(h *admin.AdminMux) *Server {
 	return s
 }
 
+// WithMounts sets the HTTPMount list and returns the server for chaining.
+// During T07/T08, both legacy routes() and mounts coexist; T09 removes legacy.
+func (s *Server) WithMounts(mounts []HTTPMount) *Server {
+	s.mounts = mounts
+	return s
+}
+
 // Handler returns the routed handler wrapped with the observability
 // middleware: correlation propagation (X-Correlation-Id, generated when
 // absent), request spans and status metrics.
 func (s *Server) Handler() http.Handler {
+	// During T07/T08, only legacy routes() is used.
+	// T09/T10 will update Handler() to use mount-based routing.
 	return s.middleware(s.routes())
+}
+
+// routesWithMounts is a placeholder for T09/T10 when mount-based routing
+// replaces legacy routing. Currently not used.
+func (s *Server) routesWithMounts() http.Handler {
+	return s.routes()
 }
 
 func (s *Server) routes() http.Handler {

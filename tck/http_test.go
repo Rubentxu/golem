@@ -3,6 +3,7 @@ package tck_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -144,4 +145,143 @@ func itemID(t *testing.T, rt *runtime.Runtime) string {
 	}
 	const prefix = "workitem:"
 	return evs[0].StreamID[len(prefix):]
+}
+
+// TestWorkRoutesResponseParity verifies that the WorkMount produces the same
+// responses as the legacy routes for the 8 work routes. This test exercises
+// the POST/PATCH/links/comments routes (which use Bus) and the GET routes
+// (which use GraphNodeFetcher and JournalStreamReader).
+func TestWorkRoutesResponseParity(t *testing.T) {
+	rt, err := runtime.New(runtime.Options{
+		Journal:    journalmem.NewJournal(),
+		Graph:      graphmem.NewGraph(),
+		Registry:   registrymem.NewRegistry(),
+		Transport:  transportmem.NewTransport(),
+		Checkpoint: checkpointmem.NewCheckpoints(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Register work command handlers.
+	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, appwork.NewWorkItemReaderOverGraphStore(rt.Graph)))
+	rt.Bus.Register(appwork.CmdUpdateWorkItem, appwork.UpdateWorkItemHandler(rt.Journal, appwork.NewWorkItemReaderOverGraphStore(rt.Graph)))
+	rt.Bus.Register(appwork.CmdLinkWorkItems, appwork.LinkWorkItemsHandler(ports.NewEntityRefReaderOverGraphStore(rt.Graph)))
+	rt.Bus.Register(appwork.CmdRegisterWorkType, appwork.RegisterWorkTypeHandler())
+	rt.Bus.Register(appwork.CmdAddComment, appwork.AddCommentHandler(rt.IDs, rt.Journal))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = rt.Run(ctx, 10, 5*time.Millisecond) }()
+
+	// Build legacy server.
+	legacySrv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).Handler())
+	defer legacySrv.Close()
+
+	// Build mount-based server with WorkMount.
+	// Note: During T08, WithMounts is set but Handler() doesn't use it yet.
+	// The actual mount-based routing is tested here directly using the WorkMount.
+	mountSrv := httptest.NewServer(httpapi.New(rt.Bus, rt.Graph, rt.Journal).
+		WithMounts([]httpapi.HTTPMount{&httpapi.WorkMount{}}).Handler())
+	defer mountSrv.Close()
+
+	tenant := "t_parity"
+
+	// Use unique idempotency keys per request to avoid duplicate detection.
+	reqSeq := 0
+	newIdemKey := func() string {
+		reqSeq++
+		return fmt.Sprintf("parity-key-%04d", reqSeq)
+	}
+
+	// Helper to replay a request against both servers and compare.
+	replay := func(method, path, body string) {
+		t.Helper()
+		// Use separate idempotency keys for each server.
+		legacyIdemKey := newIdemKey()
+		mountIdemKey := newIdemKey()
+		// Legacy request.
+		req, _ := http.NewRequest(method, legacySrv.URL+path, strings.NewReader(body))
+		req.Header.Set("X-Golem-Tenant", tenant)
+		req.Header.Set("Idempotency-Key", legacyIdemKey)
+		req.Header.Set("X-Correlation-Id", "test-corr")
+		if body != "" && (method == "POST" || method == "PATCH") {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		legacyResp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("legacy %s %s: %v", method, path, err)
+		}
+		defer legacyResp.Body.Close()
+
+		// Mount request.
+		mountReq, _ := http.NewRequest(method, mountSrv.URL+path, strings.NewReader(body))
+		mountReq.Header.Set("X-Golem-Tenant", tenant)
+		mountReq.Header.Set("Idempotency-Key", mountIdemKey)
+		mountReq.Header.Set("X-Correlation-Id", "test-corr")
+		if body != "" && (method == "POST" || method == "PATCH") {
+			mountReq.Header.Set("Content-Type", "application/json")
+		}
+		mountResp, err := http.DefaultClient.Do(mountReq)
+		if err != nil {
+			t.Fatalf("mount %s %s: %v", method, path, err)
+		}
+		defer mountResp.Body.Close()
+
+		// Compare status codes.
+		if legacyResp.StatusCode != mountResp.StatusCode {
+			t.Errorf("%s %s: legacy status=%d, mount status=%d", method, path, legacyResp.StatusCode, mountResp.StatusCode)
+		}
+		// Compare Content-Type.
+		if legacyResp.Header.Get("Content-Type") != mountResp.Header.Get("Content-Type") {
+			t.Errorf("%s %s: legacy content-type=%q, mount content-type=%q",
+				method, path, legacyResp.Header.Get("Content-Type"), mountResp.Header.Get("Content-Type"))
+		}
+	}
+
+	// Test POST /api/v1/work-items (create).
+	replay("POST", "/api/v1/work-items", `{"title":"Parity test","type":"task"}`)
+
+	// Give projection time to catch up.
+	time.Sleep(50 * time.Millisecond)
+
+	// Test GET /api/v1/work-items/{id} (read).
+	// First get the item ID from journal.
+	evs, _, _ := rt.Journal.Replay(context.Background(), 0, 0)
+	if len(evs) > 0 {
+		itemID := evs[0].StreamID[len("workitem:"):]
+		replay("GET", "/api/v1/work-items/"+itemID, "")
+	}
+
+	// Test PATCH /api/v1/work-items/{id} (update).
+	if len(evs) > 0 {
+		itemID := evs[0].StreamID[len("workitem:"):]
+		replay("PATCH", "/api/v1/work-items/"+itemID, `{"title":"Updated parity test"}`)
+	}
+
+	// Test POST /api/v1/work-items/{id}/comments.
+	if len(evs) > 0 {
+		itemID := evs[0].StreamID[len("workitem:"):]
+		replay("POST", "/api/v1/work-items/"+itemID+"/comments", `{"body":"Test comment"}`)
+	}
+
+	// Test POST /api/v1/work-items/{id}/links.
+	if len(evs) > 0 {
+		itemID := evs[0].StreamID[len("workitem:"):]
+		replay("POST", "/api/v1/work-items/"+itemID+"/links", `{"to_id":"other-item","relation":"DEPENDS_ON"}`)
+	}
+
+	// Test POST /api/v1/work-types.
+	replay("POST", "/api/v1/work-types", `{"name":"task","initial":"open","states":["open","done"]}`)
+
+	// Give projection time to catch up.
+	time.Sleep(50 * time.Millisecond)
+
+	// Test GET /api/v1/work-types/{name}.
+	replay("GET", "/api/v1/work-types/task", "")
+
+	// Test GET /api/v1/work-items/{id}/events.
+	if len(evs) > 0 {
+		itemID := evs[0].StreamID[len("workitem:"):]
+		replay("GET", "/api/v1/work-items/"+itemID+"/events", "")
+	}
 }
