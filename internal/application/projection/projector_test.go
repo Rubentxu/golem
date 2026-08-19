@@ -213,3 +213,35 @@ func TestProjection_ApplyIfHandledSkipsEmptyMutation(t *testing.T) {
 		t.Errorf("Apply call count = %d, want 0 for empty mutation", len(store.calls))
 	}
 }
+
+// TestApplyIfHandled_ShimReturnsFalseForUnknown verifies the shim semantics that
+// scenario.Fork relies on: unknown events return (false, nil) so Fork increments
+// OverlaySkipped. This is the (bool, error) contract that the scenario overlay
+// path depends on to distinguish "applied" from "skipped".
+func TestApplyIfHandled_ShimReturnsFalseForUnknown(t *testing.T) {
+	store := &fakeGraphStore{}
+	p := Projector{}
+
+	unknownEvent := mkEvent("deployment.service.registered.v1", map[string]any{"id": "svc-1"})
+	applied, err := ApplyIfHandled(p, store, unknownEvent)
+	if err != nil {
+		t.Fatalf("ApplyIfHandled unknown event: error = %v, want nil", err)
+	}
+	if applied {
+		t.Error("unknown event should return applied=false")
+	}
+	if len(store.calls) != 0 {
+		t.Errorf("Apply calls = %d, want 0 for unknown event", len(store.calls))
+	}
+
+	// Simulate scenario.Fork semantics: when applied=false, OverlaySkipped++.
+	// This is the critical invariant: unknown events must NOT be counted as
+	// applied, otherwise ForkResult.OverlayApplied would be wrong.
+	overlaySkipped := 0
+	if !applied {
+		overlaySkipped++
+	}
+	if overlaySkipped != 1 {
+		t.Errorf("overlaySkipped = %d, want 1 for unknown event", overlaySkipped)
+	}
+}

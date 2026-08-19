@@ -293,20 +293,15 @@ func (Projector) Project(env ports.RawEvent) (ports.GraphMutation, error) {
 	return m, nil
 }
 
-// ApplyIfHandled is a convenience for projection loops: it applies the
-// first chunk when the event produced ops.
+// Deprecated: use projection.Runner directly. This shim exists for the
+// scenario.Fork overlay path and will be removed in a future cycle.
 func ApplyIfHandled(p Projector, store ports.GraphStore, env ports.RawEvent) (bool, error) {
-	m, err := p.Project(env)
-	if err != nil {
-		return false, err
-	}
-	if len(m.Ops) == 0 {
-		return false, nil
-	}
-	if _, err := store.Apply(mutationCtx(env), m); err != nil {
-		return false, err
-	}
-	return true, nil
+	// Single-event Runner invocation; preserves the (bool, error) semantics
+	// that scenario.Fork relies on (Applied=false for unknown + no-op events
+	// means OverlaySkipped++ continues to count correctly).
+	r := &Runner{Projector: p, Graph: store}
+	res := r.Run(context.Background(), env)
+	return res.Applied, res.Err
 }
 
 // ApplyAll applies every chunk of an event's mutation. Used for events
