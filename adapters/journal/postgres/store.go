@@ -7,6 +7,7 @@ package postgres
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -68,79 +69,11 @@ func (s *Store) Append(ctx context.Context, events []ports.RawEvent) ([]ports.Ap
 
 	results := make([]ports.AppendResult, 0, len(events))
 	for _, e := range events {
-		if err := validateEvent(e); err != nil {
+		res, err := s.appendOneEvent(ctx, tx, e, false, 0)
+		if err != nil {
 			return nil, err
 		}
-
-		// Check duplicate by event ID.
-		var existingPos int64
-		err := tx.QueryRowContext(ctx, "SELECT position FROM id_index WHERE event_id = $1", e.EventID).Scan(&existingPos)
-		if err == nil {
-			// Duplicate found.
-			results = append(results, ports.AppendResult{
-				EventID:   e.EventID,
-				Position:  ports.StreamPosition(existingPos),
-				Duplicate: true,
-			})
-			continue
-		}
-
-		// Advance head atomically.
-		var newPos int64
-		err = tx.QueryRowContext(ctx, `
-			UPDATE meta SET value = value + 1
-			WHERE name = 'head'
-			RETURNING value`).Scan(&newPos)
-		if err != nil {
-			return nil, fmt.Errorf("advance head: %w", err)
-		}
-
-		// Insert event.
-		data, _ := json.Marshal(e)
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO events (tenant_id, stream_id, position, data)
-			VALUES ($1, $2, $3, $4)`,
-			e.TenantID, e.StreamID, newPos, data)
-		if err != nil {
-			return nil, fmt.Errorf("insert event: %w", err)
-		}
-
-		// Update id_index.
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO id_index (event_id, position) VALUES ($1, $2)
-			ON CONFLICT DO NOTHING`, e.EventID, newPos)
-		if err != nil {
-			return nil, fmt.Errorf("update id_index: %w", err)
-		}
-
-		// Advance stream version.
-		var currentVersion int64
-		err = tx.QueryRowContext(ctx, `
-			SELECT version FROM streams
-			WHERE tenant_id = $1 AND stream_id = $2`,
-			e.TenantID, e.StreamID).Scan(&currentVersion)
-		if err != nil {
-			currentVersion = 0
-		}
-		newVersion := currentVersion + 1
-
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO streams (tenant_id, stream_id, version, position)
-			VALUES ($1, $2, $3, $4)
-			ON CONFLICT (tenant_id, stream_id) DO UPDATE SET version = $3, position = $4`,
-			e.TenantID, e.StreamID, newVersion, newPos)
-		if err != nil {
-			return nil, fmt.Errorf("update stream: %w", err)
-		}
-
-		// Increment event count.
-		_, _ = tx.ExecContext(ctx, `
-			UPDATE meta SET value = value + 1 WHERE name = 'event_count'`)
-
-		results = append(results, ports.AppendResult{
-			EventID:  e.EventID,
-			Position: ports.StreamPosition(newPos),
-		})
+		results = append(results, res)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -166,7 +99,7 @@ func (s *Store) AppendIf(ctx context.Context, expected ports.StreamVersion, even
 	}
 	defer tx.Rollback()
 
-	// Read-precondition: verify stream version matches expected.
+	// Precondition: verify stream version matches expected.
 	var currentVersion int64
 	err = tx.QueryRowContext(ctx, `
 		SELECT COALESCE(version, 0) FROM streams
@@ -180,74 +113,89 @@ func (s *Store) AppendIf(ctx context.Context, expected ports.StreamVersion, even
 	}
 
 	results := make([]ports.AppendResult, 0, len(events))
+	baseVersion := expected.Version
 	for _, e := range events {
-		if err := validateEvent(e); err != nil {
+		res, err := s.appendOneEvent(ctx, tx, e, true, int64(baseVersion))
+		if err != nil {
 			return nil, err
 		}
-
-		// Check duplicate within this batch.
-		var existingPos int64
-		err := tx.QueryRowContext(ctx, "SELECT position FROM id_index WHERE event_id = $1", e.EventID).Scan(&existingPos)
-		if err == nil {
-			results = append(results, ports.AppendResult{
-				EventID:   e.EventID,
-				Position:  ports.StreamPosition(existingPos),
-				Duplicate: true,
-			})
-			continue
-		}
-
-		// Advance head.
-		var newPos int64
-		err = tx.QueryRowContext(ctx, `
-			UPDATE meta SET value = value + 1
-			WHERE name = 'head'
-			RETURNING value`).Scan(&newPos)
-		if err != nil {
-			return nil, fmt.Errorf("advance head: %w", err)
-		}
-
-		// Insert event.
-		data, _ := json.Marshal(e)
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO events (tenant_id, stream_id, position, data)
-			VALUES ($1, $2, $3, $4)`,
-			e.TenantID, e.StreamID, newPos, data)
-		if err != nil {
-			return nil, fmt.Errorf("insert event: %w", err)
-		}
-
-		// Update id_index.
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO id_index (event_id, position) VALUES ($1, $2)
-			ON CONFLICT DO NOTHING`, e.EventID, newPos)
-		if err != nil {
-			return nil, fmt.Errorf("update id_index: %w", err)
-		}
-
-		// Advance stream version.
-		newVersion := int64(expected.Version) + 1
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO streams (tenant_id, stream_id, version, position)
-			VALUES ($1, $2, $3, $4)
-			ON CONFLICT (tenant_id, stream_id) DO UPDATE SET version = $3, position = $4`,
-			e.TenantID, e.StreamID, newVersion, newPos)
-		if err != nil {
-			return nil, fmt.Errorf("update stream: %w", err)
-		}
-
-		_, _ = tx.ExecContext(ctx, `UPDATE meta SET value = value + 1 WHERE name = 'event_count'`)
-
-		results = append(results, ports.AppendResult{
-			EventID:  e.EventID,
-			Position: ports.StreamPosition(newPos),
-		})
+		results = append(results, res)
+		baseVersion++
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
 	}
 	return results, nil
+}
+
+// appendOneEvent writes a single event inside a postgres tx.
+// If useAutoVersion=true, reads stream version from DB for each event.
+// If useAutoVersion=false, uses currentVersion as the base (managed by caller).
+func (s *Store) appendOneEvent(ctx context.Context, tx *sql.Tx, e ports.RawEvent, useAutoVersion bool, currentVersion int64) (ports.AppendResult, error) {
+	if err := validateEvent(e); err != nil {
+		return ports.AppendResult{}, err
+	}
+
+	// Check duplicate by event ID.
+	var existingPos int64
+	err := tx.QueryRowContext(ctx, "SELECT position FROM id_index WHERE event_id = $1", e.EventID).Scan(&existingPos)
+	if err == nil {
+		return ports.AppendResult{EventID: e.EventID, Position: ports.StreamPosition(existingPos), Duplicate: true}, nil
+	}
+
+	// Advance head atomically.
+	var newPos int64
+	err = tx.QueryRowContext(ctx, `
+		UPDATE meta SET value = value + 1
+		WHERE name = 'head'
+		RETURNING value`).Scan(&newPos)
+	if err != nil {
+		return ports.AppendResult{}, fmt.Errorf("advance head: %w", err)
+	}
+
+	// Insert event.
+	data, _ := json.Marshal(e)
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO events (tenant_id, stream_id, position, data)
+		VALUES ($1, $2, $3, $4)`,
+		e.TenantID, e.StreamID, newPos, data)
+	if err != nil {
+		return ports.AppendResult{}, fmt.Errorf("insert event: %w", err)
+	}
+
+	// Update id_index.
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO id_index (event_id, position) VALUES ($1, $2)
+		ON CONFLICT DO NOTHING`, e.EventID, newPos)
+	if err != nil {
+		return ports.AppendResult{}, fmt.Errorf("update id_index: %w", err)
+	}
+
+	// Advance stream version.
+	if useAutoVersion {
+		err = tx.QueryRowContext(ctx, `
+			SELECT version FROM streams
+			WHERE tenant_id = $1 AND stream_id = $2`,
+			e.TenantID, e.StreamID).Scan(&currentVersion)
+		if err != nil {
+			currentVersion = 0
+		}
+	}
+	newVersion := currentVersion + 1
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO streams (tenant_id, stream_id, version, position)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (tenant_id, stream_id) DO UPDATE SET version = $3, position = $4`,
+		e.TenantID, e.StreamID, newVersion, newPos)
+	if err != nil {
+		return ports.AppendResult{}, fmt.Errorf("update stream: %w", err)
+	}
+
+	_, _ = tx.ExecContext(ctx, `UPDATE meta SET value = value + 1 WHERE name = 'event_count'`)
+
+	return ports.AppendResult{EventID: e.EventID, Position: ports.StreamPosition(newPos)}, nil
 }
 
 // ReadStream returns events for one tenant/stream with version > fromVersion.
