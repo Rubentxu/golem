@@ -61,7 +61,7 @@
   },
   "ADR-013": {
     "title": "Graph database choice requires benchmark gate",
-    "status": "Proposed",
+    "status": "Accepted",
     "date": "2026-08-17"
   },
   "ADR-014": {
@@ -298,5 +298,10 @@
     "title": "Scenarios: fork/diff/promote over overlay deltas",
     "status": "Accepted",
     "date": "2026-08-18"
+  },
+  "ADR-087": {
+    "title": "Graph database elegida: Dgraph (resultado del benchmark gate ADR-086)",
+    "status": "Accepted",
+    "date": "2026-08-19"
   }
 }

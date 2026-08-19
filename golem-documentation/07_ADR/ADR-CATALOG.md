@@ -14,7 +14,7 @@
 | [ADR-010](ADR-010.md) | Accepted | Public API is OpenAPI-first |
 | [ADR-011](ADR-011.md) | Accepted | Typed internal RPC without domain leakage |
 | [ADR-012](ADR-012.md) | Accepted | NATS JetStream is reference event transport, not core dependency |
-| [ADR-013](ADR-013.md) | Proposed | Graph database choice requires benchmark gate |
+| [ADR-013](ADR-013.md) | Accepted | Graph database choice requires benchmark gate (resuelto vía ADR-087: Dgraph elegida) |
 | [ADR-014](ADR-014.md) | Accepted | Large blobs use S3-compatible ObjectStore |
 | [ADR-015](ADR-015.md) | Accepted | Search is a rebuildable derived projection |
 | [ADR-016](ADR-016.md) | Accepted | Analytics is a rebuildable derived projection |
@@ -85,3 +85,4 @@
 | [ADR-084](ADR-084.md) | Accepted | Eliminar journal postgres adapter (no hay ADR que lo justifique) |
 | [ADR-085](ADR-085.md) | Accepted | NATS JetStream required en profiles non-dev; prod corrige transport a natsjs |
 | [ADR-086](ADR-086.md) | Accepted | Benchmark gate para ADR-013: quadlets estables para candidates de graph DB |
+| [ADR-087](ADR-087.md) | Accepted | Graph database elegida: Dgraph (resultado benchmark gate: W1 3957/s vs HugeGraph 363/s; HugeGraph descartado por 99% error rate en edge kind enforcement; NebulaGraph diferido con triggers de re-evaluación) |
