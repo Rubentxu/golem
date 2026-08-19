@@ -13,10 +13,10 @@ import (
 // consumed, regardless of whether the projector produced a mutation.
 type Runner struct {
 	Projector  Projector
-	Graph     ports.GraphStore
+	Graph      ports.GraphStore
 	Checkpoint ports.CheckpointStore
-	Logger    Logger
-	BatchSize int
+	Logger     Logger
+	BatchSize  int
 }
 
 // Logger is the observability logger interface used by Runner.

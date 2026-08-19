@@ -205,40 +205,22 @@ func (rt *Runtime) ProjectBatch(ctx context.Context, batchSize int) (int, error)
 	rt.graphMu.RLock()
 	defer rt.graphMu.RUnlock()
 
-	// Track highest checkpoint we can safely advance to: the position of the
-	// last event that was successfully applied. If any event fails (returns
-	// an error, not just applied=false), we stop advancing and let the next
-	// call retry from the last successful position. This prevents infinite
-	// retry loops while still tolerating transient "dependency not ready" cases.
-	// Event positions are from+1, from+2, ... from+len(batch) (Replay returns
-	// events with position > from, in position order).
-	savedCheckpoint := from
-	for i, env := range batch {
-		applied, err := projection.ApplyIfHandled(rt.Projector, rt.Graph, env)
-		if err != nil {
-			rt.obs.Logger.Error(ctx, "projection apply failed",
-				ports.A("event_id", env.EventID), ports.A("error", err.Error()))
-			return 0, fmt.Errorf("projection apply %s: %w", env.EventID, err)
-		}
-		if applied {
-			// Only advance savedCheckpoint past events that were actually applied.
-			// This is the key to avoiding infinite retry: on next call we
-			// retry from savedCheckpoint, not from the batch's last position.
-			savedCheckpoint = from + ports.StreamPosition(i) + 1
-		}
+	// Delegate to Runner with checkpoint-on-consumed semantics.
+	runner := &projection.Runner{
+		Projector:  rt.Projector,
+		Graph:      rt.Graph,
+		Checkpoint: rt.Checkpoint,
 	}
-
-	if savedCheckpoint > from {
-		// Advance checkpoint to the last successfully applied position, not to
-		// the batch's nominal last position (which may contain a failing event).
-		if err := rt.Checkpoint.Save(ctx, ProjectionCheckpoint, savedCheckpoint); err != nil {
-			return 0, fmt.Errorf("projection checkpoint save %d: %w", savedCheckpoint, err)
-		}
-		rt.obs.Meter.Counter("golem.projection.applied").Add(ctx, int64(savedCheckpoint-from))
-		rt.recordLag(ctx, "projection", savedCheckpoint)
-		rt.obs.Logger.Info(ctx, "project_batch_done", ports.A("from", from), ports.A("processed", savedCheckpoint-from), ports.A("new_checkpoint", savedCheckpoint))
+	n, err := runner.ProjectBatch(ctx, rt.Journal, batchSize)
+	if err != nil {
+		return 0, err
 	}
-	return int(savedCheckpoint - from), nil
+	if n > 0 {
+		rt.obs.Meter.Counter("golem.projection.applied").Add(ctx, int64(n))
+		rt.recordLag(ctx, "projection", from+ports.StreamPosition(n))
+		rt.obs.Logger.Info(ctx, "project_batch_done", ports.A("from", from), ports.A("processed", n))
+	}
+	return n, nil
 }
 
 // recordLag tracks how far a tail loop trails the journal head
