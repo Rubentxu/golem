@@ -294,16 +294,3 @@ func (b *Bus) submitWithJournal(ctx context.Context, cmd Command, commandID, cor
 	}
 	return receipt, nil
 }
-
-// submitLegacy uses the legacy Append + registry.Save path for journals
-// that do not implement CommandJournal.
-// The idempotent replay check (registry.Find) is done by the caller (submit).
-func (b *Bus) submitLegacy(ctx context.Context, cmd Command, commandID, correlation string, drafts []EventDraft) (ports.CommandReceipt, error) {
-	ls := &LegacyCommandSubmitter{
-		journal:  b.journal,
-		registry: b.registry,
-		ids:      b.ids,
-		clock:    b.clock,
-	}
-	return ls.Submit(ctx, cmd, commandID, correlation, drafts)
-}
