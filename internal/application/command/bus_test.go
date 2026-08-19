@@ -196,3 +196,57 @@ func TestSubmitIsIdempotentByCommandID(t *testing.T) {
 		t.Fatalf("journal has %d events after retry, want 1", len(*events))
 	}
 }
+
+// TestBus_BatchesMultipleEventsPerCommand verifies that a command handler which
+// produces N EventDrafts results in exactly one journal.Append call with all N
+// envelopes (not N separate calls). Batching matters for throughput: ADR-087
+// showed that journal batch_size=50 yields ~4446 ops/s; per-event append
+// destroys that gain. This test documents the batching invariant.
+func TestBus_BatchesMultipleEventsPerCommand(t *testing.T) {
+	appendCallCount := 0
+	var capturedEnvelopes []ports.RawEvent
+
+	journal := journalFunc(func(_ context.Context, events []ports.RawEvent) ([]ports.AppendResult, error) {
+		appendCallCount++
+		capturedEnvelopes = append(capturedEnvelopes, events...)
+		out := make([]ports.AppendResult, len(events))
+		for i := range events {
+			out[i] = ports.AppendResult{EventID: events[i].EventID, Position: ports.StreamPosition(i + 1)}
+		}
+		return out, nil
+	})
+
+	bus := NewBus(journal, &fakeRegistry{receipts: map[string]ports.CommandReceipt{}}, &fakeIDs{}, fakeClock{t: time.Unix(1_700_000_000, 0)})
+
+	// Handler produces 3 events: this simulates a command that has multiple
+	// domain consequences (e.g. a work item creation with automatic link
+	// creation and notification events).
+	handler := Handler(func(_ context.Context, _ Command) ([]EventDraft, error) {
+		return []EventDraft{
+			{EventType: "work.item.created.v1", StreamID: "workitem:wi-1", SchemaVersion: 1, Payload: map[string]any{"item_id": "wi-1"}},
+			{EventType: "work.item.linked.v1", StreamID: "workitem:wi-1", SchemaVersion: 1, Payload: map[string]any{"from": "wi-1", "to": "req-1", "rel": "satisfies"}},
+			{EventType: "work.notification.sent.v1", StreamID: "workitem:wi-1", SchemaVersion: 1, Payload: map[string]any{"msg": "created"}},
+		}, nil
+	})
+	bus.Register("test.multi-event", handler)
+
+	receipt, err := bus.Submit(context.Background(), Command{
+		Name:     "test.multi-event",
+		TenantID: "t_test",
+		Actor:    ports.Actor{Type: "user", ID: "u_1"},
+	})
+	if err != nil {
+		t.Fatalf("Submit error: %v", err)
+	}
+
+	// ADR-087 batching invariant: one command → one Append call, not per-event.
+	if appendCallCount != 1 {
+		t.Fatalf("journal.Append call count = %d, want 1 — all envelopes must be coalesced into one call", appendCallCount)
+	}
+	if len(capturedEnvelopes) != 3 {
+		t.Fatalf("envelopes captured = %d, want 3: %v", len(capturedEnvelopes), capturedEnvelopes)
+	}
+	if len(receipt.EventIDs) != 3 {
+		t.Fatalf("receipt.EventIDs = %d, want 3", len(receipt.EventIDs))
+	}
+}
