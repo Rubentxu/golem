@@ -198,18 +198,36 @@ func validateTypeDef(p RegisterWorkType) error {
 }
 
 // workTypeOf loads a projected WorkType definition by name.
-func workTypeOf(ctx context.Context, graph ports.GraphStore, tenant ports.TenantID, name string) (*domainwork.TypeRegistered, error) {
-	n, err := graph.GetNode(ctx, tenant, name)
+func workTypeOf(ctx context.Context, reader WorkItemReader, tenant ports.TenantID, name string) (*domainwork.TypeRegistered, error) {
+	def, err := reader.GetTypeDef(ctx, string(tenant), name)
 	if err != nil {
-		if errors.Is(err, ports.ErrNodeNotFound) {
-			return nil, fmt.Errorf("%w: %s", ErrUnknownTypeName, name)
-		}
 		return nil, err
 	}
-	if n.Kind != "WorkType" {
-		return nil, fmt.Errorf("%w: %s", ErrUnknownTypeName, name)
+	// Convert narrow-port string slices to domain types.
+	transitions := make([]domainwork.Transition, len(def.Transitions))
+	for i, t := range def.Transitions {
+		parts := strings.Split(t, "→")
+		if len(parts) == 2 {
+			transitions[i] = domainwork.Transition{From: parts[0], To: parts[1]}
+		} else {
+			transitions[i] = domainwork.Transition{From: t, To: t}
+		}
 	}
-	return typeFromAttrs(n.Attributes), nil
+	fields := make([]domainwork.FieldDef, len(def.Fields))
+	for i, f := range def.Fields {
+		parts := strings.SplitN(f, ":", 3)
+		fields[i] = domainwork.FieldDef{Name: parts[0], Required: len(parts) > 2 && parts[2] == "required"}
+		if len(parts) > 1 {
+			fields[i].Type = parts[1]
+		}
+	}
+	return &domainwork.TypeRegistered{
+		Name:        def.Name,
+		Initial:     def.Initial,
+		States:      def.States,
+		Transitions: transitions,
+		Fields:      fields,
+	}, nil
 }
 
 // typeFromAttrs rebuilds a definition from projected node attributes
@@ -276,7 +294,7 @@ func validateFields(def *domainwork.TypeRegistered, fields map[string]any) error
 // this handler, so the ID stays stable. When TypeName is set, the type
 // definition (graph projection) validates Fields and supplies the
 // initial workflow state.
-func CreateWorkItemHandler(gen ports.IDGenerator, graph ports.GraphStore) appcmd.Handler {
+func CreateWorkItemHandler(gen ports.IDGenerator, reader WorkItemReader) appcmd.Handler {
 	return func(ctx context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
 		p, ok := cmd.Payload.(CreateWorkItem)
 		if !ok {
@@ -294,7 +312,7 @@ func CreateWorkItemHandler(gen ports.IDGenerator, graph ports.GraphStore) appcmd
 		status := "open"
 		fields := p.Fields
 		if name := strings.TrimSpace(p.TypeName); name != "" {
-			def, err := workTypeOf(ctx, graph, cmd.TenantID, name)
+			def, err := workTypeOf(ctx, reader, cmd.TenantID, name)
 			if err != nil {
 				return nil, err
 			}
@@ -327,7 +345,7 @@ func CreateWorkItemHandler(gen ports.IDGenerator, graph ports.GraphStore) appcmd
 // atomically by the journal's conditional append (ADR-021). Status
 // changes of typed items must follow the type workflow (the current
 // status is folded from the stream; the workflow from the projection).
-func UpdateWorkItemHandler(journal ports.JournalStore, graph ports.GraphStore) appcmd.Handler {
+func UpdateWorkItemHandler(journal ports.JournalStore, reader WorkItemReader) appcmd.Handler {
 	return func(ctx context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
 		p, ok := cmd.Payload.(UpdateWorkItem)
 		if !ok {
@@ -362,7 +380,7 @@ func UpdateWorkItemHandler(journal ports.JournalStore, graph ports.GraphStore) a
 		if p.Status != nil {
 			current, typeName := foldItemState(evs)
 			if typeName != "" {
-				def, err := workTypeOf(ctx, graph, cmd.TenantID, typeName)
+				def, err := workTypeOf(ctx, reader, cmd.TenantID, typeName)
 				if err != nil {
 					return nil, err
 				}
@@ -421,15 +439,16 @@ func validateTransition(def *domainwork.TypeRegistered, from, to string) error {
 // belong to the canonical ontology. Existence is checked against the
 // graph projection (authoritative for cross-context nodes such as
 // Requirements).
-func LinkWorkItemsHandler(graph ports.GraphStore) appcmd.Handler {
+func LinkWorkItemsHandler(entityRef ports.EntityRefReader) appcmd.Handler {
 	exists := func(ctx context.Context, tenant ports.TenantID, id string) (bool, error) {
-		sub, err := graph.Neighborhood(ctx, ports.NeighborhoodQuery{
-			TenantID: tenant, Roots: []string{id}, MaxDepth: 1, MaxNodes: 1, MaxEdges: 1,
-		})
-		if err != nil {
-			return false, err
+		_, err := entityRef.KindOf(ctx, tenant, id)
+		if err == nil {
+			return true, nil
 		}
-		return len(sub.Nodes) > 0, nil
+		if errors.Is(err, ports.ErrNodeNotFound) {
+			return false, nil
+		}
+		return false, err
 	}
 	return func(ctx context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
 		p, ok := cmd.Payload.(LinkWorkItems)

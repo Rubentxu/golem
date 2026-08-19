@@ -10,6 +10,7 @@ import (
 
 	appcmd "github.com/Rubentxu/golem/internal/application/command"
 	domainci "github.com/Rubentxu/golem/internal/ci"
+	"github.com/Rubentxu/golem/internal/application/scm"
 	"github.com/Rubentxu/golem/internal/ports"
 )
 
@@ -39,7 +40,7 @@ type CompleteBuild struct {
 // built commit must already be observed (its journal stream exists — a
 // synchronous check against the authoritative history, no projection
 // dependency). Artifact digests must be content-addressed (ADR-022).
-func CompleteBuildHandler(gen ports.IDGenerator, journal ports.JournalStore) appcmd.Handler {
+func CompleteBuildHandler(gen ports.IDGenerator, scmReader scm.SCMStreamReader) appcmd.Handler {
 	return func(ctx context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
 		p, ok := cmd.Payload.(CompleteBuild)
 		if !ok {
@@ -58,12 +59,9 @@ func CompleteBuildHandler(gen ports.IDGenerator, journal ports.JournalStore) app
 			return nil, fmt.Errorf("%w: %q", ErrInvalidStatus, p.Status)
 		}
 
-		evs, err := journal.ReadStream(ctx, cmd.TenantID, "commit:"+sha, 0)
-		if err != nil {
+		// Check commit exists via SCMStreamReader.
+		if _, err := scmReader.CommitObserved(ctx, string(cmd.TenantID), sha); err != nil {
 			return nil, err
-		}
-		if len(evs) == 0 {
-			return nil, fmt.Errorf("%w: %s", ErrCommitNotObserved, sha)
 		}
 
 		artifacts := make([]domainci.ArtifactOut, 0, len(p.Artifacts))

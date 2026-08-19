@@ -74,17 +74,17 @@ func newStack(t *testing.T) *stack {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, rt.Graph))
+	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, appwork.NewWorkItemReaderOverGraphStore(rt.Graph)))
 	rt.Bus.Register(appscm.CmdObserveCommit, appscm.ObserveCommitHandler())
-	rt.Bus.Register(appci.CmdCompleteBuild, appci.CompleteBuildHandler(rt.IDs, rt.Journal))
-	rt.Bus.Register(appver.CmdReportTestRun, appver.ReportTestRunHandler(rt.IDs, rt.Graph))
-	rt.Bus.Register(apprelease.CmdCreateCandidate, apprelease.CreateCandidateHandler(rt.IDs, rt.Graph))
-	rt.Bus.Register(apprelease.CmdEvaluateGate, apprelease.EvaluateGateHandler(rt.Graph))
+	rt.Bus.Register(appci.CmdCompleteBuild, appci.CompleteBuildHandler(rt.IDs, appci.NewSCMStreamReaderOverJournal(rt.Journal)))
+	rt.Bus.Register(appver.CmdReportTestRun, appver.ReportTestRunHandler(rt.IDs, ports.NewEntityRefReaderOverGraphStore(rt.Graph)))
+	rt.Bus.Register(apprelease.CmdCreateCandidate, apprelease.CreateCandidateHandler(rt.IDs, appci.NewArtifactReaderOverGraphStore(rt.Graph)))
+	rt.Bus.Register(apprelease.CmdEvaluateGate, apprelease.EvaluateGateHandler(apprelease.NewReleaseGraphReaderOverGraphStore(rt.Graph), apprelease.NewSupplyChainEvidenceReaderOverGraphStore(rt.Graph), apprelease.NewArtifactVerifierOverGraphStore(rt.Graph)))
 	sbomParser := sbomparserref.NewParser()
 	provVerifier := provenanceref.NewVerifier()
 	rt.Bus.Register(appsupplychain.CmdIngestSBOM, appsupplychain.IngestSBOMHandler(sbomParser))
 	rt.Bus.Register(appsupplychain.CmdReportVulnerability, appsupplychain.ReportVulnerabilityHandler())
-	rt.Bus.Register(appsupplychain.CmdRecordVEX, appsupplychain.RecordVEXHandler(rt.Graph))
+	rt.Bus.Register(appsupplychain.CmdRecordVEX, appsupplychain.RecordVEXHandler())
 	rt.Bus.Register(appsupplychain.CmdIngestAttestation, appsupplychain.IngestAttestationHandler(provVerifier))
 
 	ctx, cancel := context.WithCancel(context.Background())

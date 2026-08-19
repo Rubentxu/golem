@@ -25,6 +25,7 @@ import (
 	"github.com/Rubentxu/golem/internal/application/supplychain"
 	appver "github.com/Rubentxu/golem/internal/application/verification"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
+	"github.com/Rubentxu/golem/internal/ports"
 	"github.com/Rubentxu/golem/internal/profile"
 )
 
@@ -51,9 +52,9 @@ func main() {
 	reg.Register(supplychain.NewProjection())
 	projection.SetGlobal(reg)
 
-	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, rt.Graph))
-	rt.Bus.Register(appwork.CmdUpdateWorkItem, appwork.UpdateWorkItemHandler(rt.Journal, rt.Graph))
-	rt.Bus.Register(appwork.CmdLinkWorkItems, appwork.LinkWorkItemsHandler(rt.Graph))
+	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, appwork.NewWorkItemReaderOverGraphStore(rt.Graph)))
+	rt.Bus.Register(appwork.CmdUpdateWorkItem, appwork.UpdateWorkItemHandler(rt.Journal, appwork.NewWorkItemReaderOverGraphStore(rt.Graph)))
+	rt.Bus.Register(appwork.CmdLinkWorkItems, appwork.LinkWorkItemsHandler(ports.NewEntityRefReaderOverGraphStore(rt.Graph)))
 	rt.Bus.Register(appwork.CmdRegisterWorkType, appwork.RegisterWorkTypeHandler())
 	rt.Bus.Register(appwork.CmdAddComment, appwork.AddCommentHandler(rt.IDs, rt.Journal))
 	rt.Bus.Register(appro.CmdCreateRequirement, appro.CreateRequirementHandler(rt.IDs))
@@ -61,10 +62,10 @@ func main() {
 	rt.Bus.Register(appplanning.CmdCreateIteration, appplanning.CreateIterationHandler(rt.IDs))
 	rt.Bus.Register(appplanning.CmdCreateMilestone, appplanning.CreateMilestoneHandler(rt.IDs))
 	rt.Bus.Register(appscm.CmdObserveCommit, appscm.ObserveCommitHandler())
-	rt.Bus.Register(appci.CmdCompleteBuild, appci.CompleteBuildHandler(rt.IDs, rt.Journal))
-	rt.Bus.Register(appver.CmdReportTestRun, appver.ReportTestRunHandler(rt.IDs, rt.Graph))
-	rt.Bus.Register(apprelease.CmdCreateCandidate, apprelease.CreateCandidateHandler(rt.IDs, rt.Graph))
-	rt.Bus.Register(apprelease.CmdEvaluateGate, apprelease.EvaluateGateHandler(rt.Graph))
+	rt.Bus.Register(appci.CmdCompleteBuild, appci.CompleteBuildHandler(rt.IDs, appci.NewSCMStreamReaderOverJournal(rt.Journal)))
+	rt.Bus.Register(appver.CmdReportTestRun, appver.ReportTestRunHandler(rt.IDs, ports.NewEntityRefReaderOverGraphStore(rt.Graph)))
+	rt.Bus.Register(apprelease.CmdCreateCandidate, apprelease.CreateCandidateHandler(rt.IDs, appci.NewArtifactReaderOverGraphStore(rt.Graph)))
+	rt.Bus.Register(apprelease.CmdEvaluateGate, apprelease.EvaluateGateHandler(apprelease.NewReleaseGraphReaderOverGraphStore(rt.Graph), apprelease.NewSupplyChainEvidenceReaderOverGraphStore(rt.Graph), apprelease.NewArtifactVerifierOverGraphStore(rt.Graph)))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

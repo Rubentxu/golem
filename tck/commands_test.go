@@ -29,7 +29,7 @@ func TestCommandToProjection(t *testing.T) {
 	graph := graphmem.NewGraph()
 
 	bus := command.NewBus(journal, registry, gen, clk)
-	bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(gen, graph))
+	bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(gen, appwork.NewWorkItemReaderOverGraphStore(graph)))
 
 	cmd := command.Command{
 		Name:     appwork.CmdCreateWorkItem,
