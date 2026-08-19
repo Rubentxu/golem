@@ -58,6 +58,17 @@ type Runtime struct {
 	Clock      ports.Clock
 	IDs        ports.IDGenerator
 	obs        ports.Observability
+
+	// M8 ports: nil-safe (optional like Search)
+	CellRouter    ports.CellRouter
+	TenantCatalog ports.TenantCatalog
+	QuotaEnforcer ports.QuotaEnforcer
+	UsageMeter    ports.UsageMeter
+	SLOTracker    ports.SLOTracker
+	Paging        ports.Paging
+	AuthN         ports.AuthN
+	PackRegistry  ports.PackRegistry
+
 	// mu serializes the checkpoint read-process-write cycle in ProjectBatch
 	// to prevent races between the background tail loop and explicit drain().
 	mu sync.Mutex
@@ -72,7 +83,10 @@ type Runtime struct {
 // observability bundle (zero value = no-ops). Search is optional: nil
 // disables the search tail loop (search is a derived projection,
 // ADR-015). LLM, Policy, and Budgets are optional and set by
-// bootstrap for agentic behaviors (M7).
+// bootstrap for agentic behaviors (M7). M8 ports (CellRouter,
+// TenantCatalog, QuotaEnforcer, UsageMeter, SLOTracker, Paging,
+// AuthN, PackRegistry) are nil-safe and default to no-op or memstore
+// implementations per profile.
 type Options struct {
 	Journal    ports.JournalStore
 	Graph      ports.GraphStore
@@ -89,6 +103,16 @@ type Options struct {
 	Policy ports.PolicyEvaluator
 	// Budgets maps budget name to BudgetLimits for agentic behaviors (M7).
 	Budgets map[string]ports.BudgetLimits
+
+	// M8 ports: nil-safe
+	CellRouter    ports.CellRouter
+	TenantCatalog ports.TenantCatalog
+	QuotaEnforcer ports.QuotaEnforcer
+	UsageMeter    ports.UsageMeter
+	SLOTracker    ports.SLOTracker
+	Paging        ports.Paging
+	AuthN         ports.AuthN
+	PackRegistry  ports.PackRegistry
 }
 
 // New composes a runtime. Handlers are registered on rt.Bus by the host
@@ -121,6 +145,15 @@ func New(opts Options) (*Runtime, error) {
 		Clock:      clk,
 		IDs:        gen,
 		obs:        o,
+		// M8 ports: nil-safe
+		CellRouter:    opts.CellRouter,
+		TenantCatalog: opts.TenantCatalog,
+		QuotaEnforcer: opts.QuotaEnforcer,
+		UsageMeter:    opts.UsageMeter,
+		SLOTracker:    opts.SLOTracker,
+		Paging:        opts.Paging,
+		AuthN:         opts.AuthN,
+		PackRegistry:  opts.PackRegistry,
 	}, nil
 }
 
