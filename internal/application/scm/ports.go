@@ -20,4 +20,3 @@ type CommitObservedEvent struct {
 	Timestamp  int64
 	Implements []string // requirement IDs this commit implements
 }
-
