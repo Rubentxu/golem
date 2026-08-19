@@ -82,3 +82,6 @@
 | [ADR-081](ADR-081.md) | Accepted | Ops console operator-only (D8) |
 | [ADR-082](ADR-082.md) | Accepted | OIDC bearer + JWKS discovery (D9) |
 | [ADR-083](ADR-083.md) | Accepted | Profile composition + AWS managed (D10) |
+| [ADR-084](ADR-084.md) | Accepted | Eliminar journal postgres adapter (no hay ADR que lo justifique) |
+| [ADR-085](ADR-085.md) | Accepted | NATS JetStream required en profiles non-dev; prod corrige transport a natsjs |
+| [ADR-086](ADR-086.md) | Accepted | Benchmark gate para ADR-013: quadlets estables para candidates de graph DB |

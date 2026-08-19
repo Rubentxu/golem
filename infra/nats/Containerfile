@@ -1,0 +1,12 @@
+# NATS Server with JetStream
+# Usage: podman build -t golem-nats ./nats
+#        podman run -d --name golem-nats -p 4222:4222 -p 8222:8222 -p 6222:6222 golem-nats
+FROM docker.io/library/nats:2.10-alpine
+
+COPY nats-server.conf /etc/nats/nats-server.conf
+
+EXPOSE 4222 8222 6222
+
+VOLUME ["/data"]
+
+CMD ["-c", "/etc/nats/nats-server.conf"]

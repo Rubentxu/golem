@@ -1,0 +1,16 @@
+# NebulaGraph (benchmark candidate #2 per ADR-086)
+# Note: NebulaGraph es distributed por defecto. Para benchmark single-node
+# usamos la imagen all-in-one de vesoft.
+# Official: https://hub.docker.com/r/vesoft/nebula-graphd
+FROM docker.io/vesoft/nebula-graphd:latest
+
+# NebulaGraph ports:
+# 9669 — NebulaGraph service port (Thrift)
+# 19669 — HTTP port
+
+EXPOSE 9669 19669
+
+# Graphd es stateless; el estado vive en storaged y metad
+# Para benchmark single-node, se asume que storaged y metad ya estan corriendo
+# en los containers nebula-storaged y nebula-metad (fuera del scope de este Containerfile)
+CMD ["--flagfile=/usr/local/nebula/nebula-graphd.conf"]

@@ -1,0 +1,16 @@
+# Dgraph (benchmark candidate #3 per ADR-086)
+# Official: https://hub.docker.com/r/dgraph/dgraph
+FROM docker.io/dgraph/dgraph:latest
+
+# Dgraph ports:
+# 8080 — HTTP (admin + ratel)
+# 9080 — gRPC
+# 8000  — Ratel UI
+
+EXPOSE 8080 9080 8000
+
+# Dgraph needs volume for persistence
+VOLUME ["/dgraph"]
+
+# Default: runs dgraph server
+CMD ["dgraph", "alpha"]

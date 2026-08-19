@@ -1,0 +1,15 @@
+# Apache HugeGraph (benchmark candidate #1 per ADR-086)
+# Official: https://hub.docker.com/r/hugegraph/hugegraph
+FROM docker.io/hugegraph/hugegraph:latest
+
+# HugeGraph ports:
+# 8080 — HTTP API (Gremlin)
+# 8090 — Hbase backend
+# 8081 — Studio (optional)
+
+EXPOSE 8080 8090 8081
+
+# Data volume
+VOLUME ["/opt/hugegraph"]
+
+# Default: starts all services (HugeGraphServer + HBase)
