@@ -32,6 +32,7 @@ func (w *journalStoreWorkItemWriter) AppendCommand(ctx context.Context, cmd Work
 		StreamID:   "workitem:" + cmd.ItemID,
 		EventType:  cmd.Name,
 		OccurredAt: time.Now(),
+		Actor:      ports.Actor{Type: "service", ID: "work-item-writer"},
 		Payload:    payload,
 	}
 	_, err := w.jrnl.Append(ctx, []ports.RawEvent{raw})
