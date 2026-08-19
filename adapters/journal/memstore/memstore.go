@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -18,19 +19,27 @@ import (
 	"github.com/Rubentxu/golem/internal/ports"
 )
 
+// commandIndexEntry stores the command record for fingerprint comparison.
+type commandIndexEntry struct {
+	Command ports.CommandRecord
+	Receipt ports.CommandJournalReceipt
+}
+
 // Store is an in-memory JournalStore. Safe for concurrent use.
 type Store struct {
-	mu      sync.Mutex
-	events  []ports.RawEvent
-	byID    map[string]ports.StreamPosition
-	streams map[string][]ports.StreamPosition
+	mu          sync.Mutex
+	events      []ports.RawEvent
+	byID        map[string]ports.StreamPosition
+	streams     map[string][]ports.StreamPosition
+	byCommandID map[string]commandIndexEntry
 }
 
 // NewJournal builds an empty journal.
 func NewJournal() *Store {
 	return &Store{
-		byID:    map[string]ports.StreamPosition{},
-		streams: map[string][]ports.StreamPosition{},
+		byID:        map[string]ports.StreamPosition{},
+		streams:     map[string][]ports.StreamPosition{},
+		byCommandID: map[string]commandIndexEntry{},
 	}
 }
 
@@ -166,6 +175,82 @@ func (s *Store) Restore(ctx context.Context, handle ports.BackupHandle) error {
 	// memstore does not support restore from external backup.
 	// This is a stub that returns nil for TCK conformance.
 	return nil
+}
+
+// AppendCommand implements ports.CommandJournal.
+// It atomically appends events and indexes the command under command_id.
+// If command_id already exists with matching fingerprint, returns cached receipt (Duplicate=true).
+// If command_id exists with different fingerprint, returns ErrCommandMismatch.
+func (s *Store) AppendCommand(ctx context.Context, cmd ports.CommandRecord, events []ports.RawEvent) (ports.CommandJournalReceipt, error) {
+	_ = ctx
+	if cmd.CommandID == "" {
+		return ports.CommandJournalReceipt{}, errors.New("command_id is mandatory")
+	}
+	if len(events) == 0 {
+		return ports.CommandJournalReceipt{}, errors.New("events is mandatory")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Check for existing command_id
+	if existing, ok := s.byCommandID[cmd.CommandID]; ok {
+		// Compare fingerprint to detect payload mismatch
+		if existing.Command.Fingerprint != "" && cmd.Fingerprint != "" && existing.Command.Fingerprint != cmd.Fingerprint {
+			return ports.CommandJournalReceipt{}, ports.ErrCommandMismatch
+		}
+		// For idempotent retry, return the cached receipt with Duplicate=true
+		receipt := existing.Receipt
+		receipt.Duplicate = true
+		return receipt, nil
+	}
+
+	// Validate all events before mutating
+	for _, e := range events {
+		if err := validate(e); err != nil {
+			return ports.CommandJournalReceipt{}, err
+		}
+	}
+
+	// Append events
+	eventIDs := make([]string, 0, len(events))
+	var maxPos ports.StreamPosition
+
+	for _, e := range events {
+		// Check if event_id already exists
+		if existingPos, dup := s.byID[e.EventID]; dup {
+			eventIDs = append(eventIDs, e.EventID)
+			if existingPos > maxPos {
+				maxPos = existingPos
+			}
+			continue
+		}
+
+		pos := ports.StreamPosition(len(s.events) + 1)
+		s.events = append(s.events, e)
+		s.byID[e.EventID] = pos
+		key := streamKey(e.TenantID, e.StreamID)
+		s.streams[key] = append(s.streams[key], pos)
+		eventIDs = append(eventIDs, e.EventID)
+		maxPos = pos
+	}
+
+	// Build and store receipt
+	receipt := ports.CommandJournalReceipt{
+		CommandID:   cmd.CommandID,
+		EventIDs:    eventIDs,
+		Position:    maxPos,
+		Tenant:      cmd.TenantID,
+		Actor:       cmd.Actor,
+		Correlation: cmd.CorrelationID,
+		Duplicate:   false,
+	}
+	s.byCommandID[cmd.CommandID] = commandIndexEntry{
+		Command: cmd,
+		Receipt: receipt,
+	}
+
+	return receipt, nil
 }
 
 func validate(e ports.RawEvent) error {
