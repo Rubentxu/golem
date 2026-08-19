@@ -327,16 +327,16 @@ func projectSingle(env ports.RawEvent) (ports.GraphMutation, error) {
 		}))
 
 	case supplychain.EventSBOMIngested:
-		return projectSBOMIngested(env)
+		return ProjectSBOMIngested(env)
 
 	case supplychain.EventVulnerabilityReported:
-		return projectVulnerabilityReported(env)
+		return ProjectVulnerabilityReported(env)
 
 	case supplychain.EventVEXStatementRecorded:
-		return projectVEXStatement(env)
+		return ProjectVEXStatement(env)
 
 	case supplychain.EventAttestationIngested:
-		return projectAttestationIngested(env)
+		return ProjectAttestationIngested(env)
 	}
 
 	return m, nil
@@ -404,7 +404,8 @@ func mutationCtx(env ports.RawEvent) context.Context {
 // subject artifact does not exist in the graph.
 var ErrUnknownArtifact = fmt.Errorf("projection: attestation subject artifact not found")
 
-func projectSBOMIngested(env ports.RawEvent) (ports.GraphMutation, error) {
+// ProjectSBOMIngested projects an SBOM ingested event into graph mutations.
+func ProjectSBOMIngested(env ports.RawEvent) (ports.GraphMutation, error) {
 	m := ports.GraphMutation{TenantID: ports.TenantID(env.TenantID)}
 	var p supplychain.SBOMIngested
 	if err := json.Unmarshal(env.Payload, &p); err != nil {
@@ -460,7 +461,8 @@ func projectSBOMIngested(env ports.RawEvent) (ports.GraphMutation, error) {
 	return m, nil
 }
 
-func projectVulnerabilityReported(env ports.RawEvent) (ports.GraphMutation, error) {
+// ProjectVulnerabilityReported projects a vulnerability reported event into graph mutations.
+func ProjectVulnerabilityReported(env ports.RawEvent) (ports.GraphMutation, error) {
 	m := ports.GraphMutation{TenantID: ports.TenantID(env.TenantID)}
 	var p supplychain.VulnerabilityReported
 	if err := json.Unmarshal(env.Payload, &p); err != nil {
@@ -491,7 +493,8 @@ func projectVulnerabilityReported(env ports.RawEvent) (ports.GraphMutation, erro
 	return m, nil
 }
 
-func projectVEXStatement(env ports.RawEvent) (ports.GraphMutation, error) {
+// ProjectVEXStatement projects a VEX statement event into graph mutations.
+func ProjectVEXStatement(env ports.RawEvent) (ports.GraphMutation, error) {
 	m := ports.GraphMutation{TenantID: ports.TenantID(env.TenantID)}
 	var p supplychain.VEXStatementRecorded
 	if err := json.Unmarshal(env.Payload, &p); err != nil {
@@ -531,7 +534,8 @@ func projectVEXStatement(env ports.RawEvent) (ports.GraphMutation, error) {
 	return m, nil
 }
 
-func projectAttestationIngested(env ports.RawEvent) (ports.GraphMutation, error) {
+// ProjectAttestationIngested projects an attestation ingested event into graph mutations.
+func ProjectAttestationIngested(env ports.RawEvent) (ports.GraphMutation, error) {
 	m := ports.GraphMutation{TenantID: ports.TenantID(env.TenantID)}
 	var p supplychain.AttestationIngested
 	if err := json.Unmarshal(env.Payload, &p); err != nil {

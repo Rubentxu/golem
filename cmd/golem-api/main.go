@@ -17,10 +17,12 @@ import (
 	appci "github.com/Rubentxu/golem/internal/application/ci"
 	"github.com/Rubentxu/golem/internal/application/ingest"
 	appplanning "github.com/Rubentxu/golem/internal/application/planning"
+	"github.com/Rubentxu/golem/internal/application/projection"
 	appprojects "github.com/Rubentxu/golem/internal/application/projects"
 	apprelease "github.com/Rubentxu/golem/internal/application/release"
 	appro "github.com/Rubentxu/golem/internal/application/requirements"
 	appscm "github.com/Rubentxu/golem/internal/application/scm"
+	"github.com/Rubentxu/golem/internal/application/supplychain"
 	appver "github.com/Rubentxu/golem/internal/application/verification"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
 	"github.com/Rubentxu/golem/internal/profile"
@@ -43,6 +45,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Register supplychain projection into the global registry (strangler-fig pattern).
+	reg := projection.NewRegistry()
+	reg.Register(supplychain.NewProjection())
+	projection.SetGlobal(reg)
+
 	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, rt.Graph))
 	rt.Bus.Register(appwork.CmdUpdateWorkItem, appwork.UpdateWorkItemHandler(rt.Journal, rt.Graph))
 	rt.Bus.Register(appwork.CmdLinkWorkItems, appwork.LinkWorkItemsHandler(rt.Graph))
