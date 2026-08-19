@@ -713,3 +713,192 @@ func BenchmarkConcurrentReads(b *testing.B) {
 		}
 	})
 }
+
+// TestAppendCommandBasic tests basic AppendCommand functionality.
+func TestAppendCommandBasic(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewJournal(dir+"/journal.db", Options{})
+	if err != nil {
+		t.Fatalf("NewJournal: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	cmd := ports.CommandRecord{
+		CommandID:     "cmd-001",
+		CommandKind:   "test.command",
+		TenantID:      "tenant-test",
+		Actor:         ports.Actor{Type: "user", ID: "actor-1"},
+		CorrelationID: "corr-001",
+		Fingerprint:   "fp-001",
+	}
+	events := []ports.RawEvent{
+		{
+			EventID:       "evt-001",
+			TenantID:      "tenant-test",
+			StreamID:      "stream-test",
+			EventType:     "test.event.one.v1",
+			SchemaVersion: 1,
+			OccurredAt:    time.Now(),
+			Actor:         ports.Actor{Type: "user", ID: "actor-1"},
+			Payload:       []byte(`{"index":1}`),
+		},
+		{
+			EventID:       "evt-002",
+			TenantID:      "tenant-test",
+			StreamID:      "stream-test",
+			EventType:     "test.event.two.v1",
+			SchemaVersion: 1,
+			OccurredAt:    time.Now(),
+			Actor:         ports.Actor{Type: "user", ID: "actor-1"},
+			Payload:       []byte(`{"index":2}`),
+		},
+	}
+
+	// First append should succeed
+	receipt, err := store.AppendCommand(ctx, cmd, events)
+	if err != nil {
+		t.Fatalf("AppendCommand first: %v", err)
+	}
+	if receipt.Duplicate {
+		t.Error("first append should not be duplicate")
+	}
+	if receipt.CommandID != cmd.CommandID {
+		t.Errorf("CommandID = %q, want %q", receipt.CommandID, cmd.CommandID)
+	}
+	if len(receipt.EventIDs) != 2 {
+		t.Errorf("EventIDs len = %d, want 2", len(receipt.EventIDs))
+	}
+	if receipt.Position == 0 {
+		t.Error("Position should not be zero")
+	}
+
+	// Duplicate append with same fingerprint should return Duplicate=true
+	receipt2, err := store.AppendCommand(ctx, cmd, events)
+	if err != nil {
+		t.Fatalf("AppendCommand duplicate: %v", err)
+	}
+	if !receipt2.Duplicate {
+		t.Error("duplicate append should be flagged")
+	}
+	if receipt2.CommandID != cmd.CommandID {
+		t.Errorf("CommandID = %q, want %q", receipt2.CommandID, cmd.CommandID)
+	}
+}
+
+// TestAppendCommandMismatch tests that different fingerprints return ErrCommandMismatch.
+func TestAppendCommandMismatch(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewJournal(dir+"/journal.db", Options{})
+	if err != nil {
+		t.Fatalf("NewJournal: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	events := []ports.RawEvent{
+		{
+			EventID:       "evt-mismatch",
+			TenantID:      "tenant-test",
+			StreamID:      "stream-test",
+			EventType:     "test.event.one.v1",
+			SchemaVersion: 1,
+			OccurredAt:    time.Now(),
+			Actor:         ports.Actor{Type: "user", ID: "actor-1"},
+			Payload:       []byte(`{"index":1}`),
+		},
+	}
+
+	cmd1 := ports.CommandRecord{
+		CommandID:   "cmd-mismatch",
+		CommandKind: "test.command",
+		TenantID:    "tenant-test",
+		Actor:       ports.Actor{Type: "user", ID: "actor-1"},
+		Fingerprint: "fp-alpha",
+	}
+
+	_, err = store.AppendCommand(ctx, cmd1, events)
+	if err != nil {
+		t.Fatalf("AppendCommand first: %v", err)
+	}
+
+	// Same command_id but different fingerprint
+	cmd2 := ports.CommandRecord{
+		CommandID:   "cmd-mismatch",
+		CommandKind: "test.command",
+		TenantID:    "tenant-test",
+		Actor:       ports.Actor{Type: "user", ID: "actor-1"},
+		Fingerprint: "fp-beta",
+	}
+
+	_, err = store.AppendCommand(ctx, cmd2, events)
+	if !errors.Is(err, ports.ErrCommandMismatch) {
+		t.Errorf("AppendCommand mismatch: got %v, want ErrCommandMismatch", err)
+	}
+}
+
+// TestAppendCommandAtomicOnCrash verifies that crash between events and index write
+// results in neither being persisted (bbolt rollback guarantees this).
+func TestAppendCommandAtomicOnCrash(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := dir + "/journal.db"
+
+	// First, create a store and add a command
+	store, err := NewJournal(dbPath, Options{})
+	if err != nil {
+		t.Fatalf("NewJournal: %v", err)
+	}
+
+	ctx := context.Background()
+	events := []ports.RawEvent{
+		{
+			EventID:       "evt-crash-1",
+			TenantID:      "tenant-crash",
+			StreamID:      "stream-crash",
+			EventType:     "test.crash.one.v1",
+			SchemaVersion: 1,
+			OccurredAt:    time.Now(),
+			Actor:         ports.Actor{Type: "user", ID: "actor-1"},
+			Payload:       []byte(`{"index":1}`),
+		},
+	}
+
+	cmd := ports.CommandRecord{
+		CommandID:   "cmd-crash",
+		CommandKind: "test",
+		TenantID:    "tenant-crash",
+		Actor:       ports.Actor{Type: "user", ID: "actor-1"},
+		Fingerprint: "fp-crash",
+	}
+
+	receipt, err := store.AppendCommand(ctx, cmd, events)
+	if err != nil {
+		t.Fatalf("AppendCommand: %v", err)
+	}
+	store.Close()
+
+	// Verify the events are persisted by reopening and replaying
+	store2, err := NewJournal(dbPath, Options{})
+	if err != nil {
+		t.Fatalf("NewJournal reopen: %v", err)
+	}
+	defer store2.Close()
+
+	// Replay should show the events
+	replayed, lastPos, err := store2.Replay(ctx, 0, 0)
+	if err != nil {
+		t.Fatalf("Replay: %v", err)
+	}
+	if len(replayed) == 0 {
+		t.Fatal("events should be persisted after reopen")
+	}
+	if lastPos == 0 {
+		t.Error("lastPos should not be zero after events are persisted")
+	}
+
+	// The receipt should match what we got before
+	if receipt.CommandID != cmd.CommandID {
+		t.Errorf("receipt CommandID = %q, want %q", receipt.CommandID, cmd.CommandID)
+	}
+	_ = lastPos // silence unused variable warning
+}

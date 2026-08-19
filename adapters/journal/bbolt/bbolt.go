@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -63,6 +64,9 @@ func NewJournal(path string, opts Options) (*Store, error) {
 		}
 		if _, err := tx.CreateBucketIfNotExists([]byte(bucketStreams)); err != nil {
 			return fmt.Errorf("create bucket %s: %w", bucketStreams, err)
+		}
+		if _, err := tx.CreateBucketIfNotExists([]byte(bucketCommandIndex)); err != nil {
+			return fmt.Errorf("create bucket %s: %w", bucketCommandIndex, err)
 		}
 		return nil
 	}); err != nil {
@@ -554,6 +558,173 @@ func (s *Store) Restore(ctx context.Context, handle ports.BackupHandle) error {
 		}
 		return nil
 	})
+}
+
+// commandIndexRecord is stored in the command_index bucket.
+type commandIndexRecord struct {
+	CommandID   string   `json:"command_id"`
+	EventIDs    []string `json:"event_ids"`
+	Position    uint64   `json:"position"`
+	Tenant      string   `json:"tenant"`
+	ActorType   string   `json:"actor_type"`
+	ActorID     string   `json:"actor_id"`
+	Correlation string   `json:"correlation"`
+	Fingerprint string   `json:"fingerprint,omitempty"`
+}
+
+// AppendCommand implements ports.CommandJournal.
+// It atomically appends events and indexes the command under command_id.
+// If command_id already exists with matching fingerprint, returns cached receipt (Duplicate=true).
+// If command_id exists with different fingerprint, returns ErrCommandMismatch.
+func (s *Store) AppendCommand(ctx context.Context, cmd ports.CommandRecord, events []ports.RawEvent) (ports.CommandJournalReceipt, error) {
+	if cmd.CommandID == "" {
+		return ports.CommandJournalReceipt{}, errors.New("command_id is mandatory")
+	}
+	if len(events) == 0 {
+		return ports.CommandJournalReceipt{}, errors.New("events is mandatory")
+	}
+	_ = ctx
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var receipt ports.CommandJournalReceipt
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		cmdIdx := tx.Bucket([]byte(bucketCommandIndex))
+		key := []byte(cmd.CommandID)
+
+		// Check for existing command_id
+		if existing := cmdIdx.Get(key); existing != nil {
+			var rec commandIndexRecord
+			if err := json.Unmarshal(existing, &rec); err != nil {
+				return fmt.Errorf("unmarshal command index: %w", err)
+			}
+			// Compare fingerprint to detect payload mismatch
+			if rec.Fingerprint != "" && cmd.Fingerprint != "" && rec.Fingerprint != cmd.Fingerprint {
+				return ports.ErrCommandMismatch
+			}
+			// Return cached receipt (idempotent retry)
+			receipt = ports.CommandJournalReceipt{
+				CommandID:   rec.CommandID,
+				EventIDs:    rec.EventIDs,
+				Position:    ports.StreamPosition(rec.Position),
+				Tenant:      ports.TenantID(rec.Tenant),
+				Actor:       ports.Actor{Type: rec.ActorType, ID: rec.ActorID},
+				Correlation: rec.Correlation,
+				Duplicate:   true,
+			}
+			return nil
+		}
+
+		// Build eventIDs and track positions
+		eventIDs := make([]string, 0, len(events))
+		var maxPos uint64
+
+		// Write events using appendOneEvent logic but without the id_index duplicate check
+		// (we're already checking command-level idempotency)
+		eventsBucket := tx.Bucket([]byte(bucketEvents))
+		idIdx := tx.Bucket([]byte(bucketIDIndex))
+
+		for _, e := range events {
+			// Validate event
+			if err := validateEvent(e); err != nil {
+				return err
+			}
+
+			// Check id_index for duplicate event (separate from command-level idempotency)
+			if posBytes := idIdx.Get([]byte(e.EventID)); posBytes != nil {
+				pos := decodeUint64BE(posBytes)
+				eventIDs = append(eventIDs, e.EventID)
+				if pos > maxPos {
+					maxPos = pos
+				}
+				continue
+			}
+
+			// Read current head
+			head, err := readHead(tx)
+			if err != nil {
+				return err
+			}
+			newPos := head + 1
+
+			// Write to id_index
+			if err := idIdx.Put([]byte(e.EventID), encodeUint64BE(newPos)); err != nil {
+				return fmt.Errorf("store id index: %w", err)
+			}
+
+			// Write event
+			data, merr := json.Marshal(e)
+			if merr != nil {
+				return fmt.Errorf("marshal event: %w", merr)
+			}
+			if err := eventsBucket.Put(encodeUint64BE(newPos), data); err != nil {
+				return fmt.Errorf("store event: %w", err)
+			}
+
+			// Update head
+			if err := writeHead(tx, newPos); err != nil {
+				return err
+			}
+
+			eventIDs = append(eventIDs, e.EventID)
+			maxPos = newPos
+
+			// Update streams bucket
+			streamsBucket := tx.Bucket([]byte(bucketStreams))
+			streamKey := streamKey(e.TenantID, e.StreamID)
+			var streamVersion uint64
+			if v := streamsBucket.Get(streamKey); v != nil {
+				streamVersion = decodeUint64BE(v)
+			}
+			newStreamVersion := streamVersion + 1
+			if err := streamsBucket.Put(streamKey, encodeUint64BE(newStreamVersion)); err != nil {
+				return fmt.Errorf("update stream version: %w", err)
+			}
+			versionKey := streamVersionKey(e.TenantID, e.StreamID, newStreamVersion)
+			if err := streamsBucket.Put(versionKey, encodeUint64BE(newPos)); err != nil {
+				return fmt.Errorf("store stream version key: %w", err)
+			}
+
+			if err := incrementCounter(tx, counterEventCount); err != nil {
+				return err
+			}
+		}
+
+		// Write command index record
+		rec := commandIndexRecord{
+			CommandID:   cmd.CommandID,
+			EventIDs:    eventIDs,
+			Position:    maxPos,
+			Tenant:      string(cmd.TenantID),
+			ActorType:   cmd.Actor.Type,
+			ActorID:     cmd.Actor.ID,
+			Correlation: cmd.CorrelationID,
+			Fingerprint: cmd.Fingerprint,
+		}
+		recData, err := json.Marshal(rec)
+		if err != nil {
+			return fmt.Errorf("marshal command index record: %w", err)
+		}
+		if err := cmdIdx.Put(key, recData); err != nil {
+			return fmt.Errorf("store command index: %w", err)
+		}
+
+		receipt = ports.CommandJournalReceipt{
+			CommandID:   cmd.CommandID,
+			EventIDs:    eventIDs,
+			Position:    ports.StreamPosition(maxPos),
+			Tenant:      cmd.TenantID,
+			Actor:       cmd.Actor,
+			Correlation: cmd.CorrelationID,
+			Duplicate:   false,
+		}
+		return nil
+	})
+	if err != nil {
+		return ports.CommandJournalReceipt{}, err
+	}
+	return receipt, nil
 }
 
 // readHeadRLocked reads head; caller must hold s.mu.

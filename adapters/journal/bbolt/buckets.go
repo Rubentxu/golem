@@ -7,10 +7,11 @@ import (
 )
 
 const (
-	bucketMeta    = "meta"
-	bucketEvents  = "events"
-	bucketStreams = "streams"
-	bucketIDIndex = "id_index"
+	bucketMeta         = "meta"
+	bucketEvents       = "events"
+	bucketStreams      = "streams"
+	bucketIDIndex      = "id_index"
+	bucketCommandIndex = "command_index"
 
 	counterHead       = "head"
 	counterEventCount = "event_count"
