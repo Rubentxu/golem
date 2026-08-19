@@ -256,9 +256,7 @@ func TestReportVulnerabilityHandler_RejectsBadStatus(t *testing.T) {
 // ---- RecordVEX tests ----
 
 func TestRecordVEXHandler_RejectsInvalidStatus(t *testing.T) {
-	h := RecordVEXHandler(&fakeGraphStore{nodes: map[string]ports.Node{
-		"sha256:abc": {ID: "sha256:abc", Kind: "Artifact"},
-	}})
+	h := RecordVEXHandler()
 	_, err := h(context.Background(), cmd(RecordVEX{
 		StatementID:   "vex-1",
 		VulnID:        "CVE-2021-23337",
@@ -275,7 +273,7 @@ func TestRecordVEXHandler_AcceptsUnknownProductDigest(t *testing.T) {
 	// Per spec, VEX statements SHALL be accepted even for unknown products.
 	// The projector records affected=0 and defers MITIGATED_BY edge creation
 	// until the product is confirmed in the graph.
-	h := RecordVEXHandler(&fakeGraphStore{nodes: map[string]ports.Node{}})
+	h := RecordVEXHandler()
 	drafts, err := h(context.Background(), cmd(RecordVEX{
 		StatementID:   "vex-1",
 		VulnID:        "CVE-2021-23337",
@@ -292,10 +290,7 @@ func TestRecordVEXHandler_AcceptsUnknownProductDigest(t *testing.T) {
 }
 
 func TestRecordVEXHandler_AcceptsValidVEX(t *testing.T) {
-	graph := &fakeGraphStore{nodes: map[string]ports.Node{
-		"sha256:abc": {ID: "sha256:abc", Kind: "Artifact"},
-	}}
-	h := RecordVEXHandler(graph)
+	h := RecordVEXHandler()
 	drafts, err := h(context.Background(), cmd(RecordVEX{
 		StatementID:   "vex-1",
 		VulnID:        "CVE-2021-23337",

@@ -22,6 +22,7 @@ import (
 	appscm "github.com/Rubentxu/golem/internal/application/scm"
 	appver "github.com/Rubentxu/golem/internal/application/verification"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
+	"github.com/Rubentxu/golem/internal/ports"
 )
 
 // TestM3Lineage proves the M3 exit criterion end to end over HTTP:
@@ -40,11 +41,11 @@ func TestM3Lineage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, rt.Graph))
+	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, appwork.NewWorkItemReaderOverGraphStore(rt.Graph)))
 	rt.Bus.Register(appreq.CmdCreateRequirement, appreq.CreateRequirementHandler(rt.IDs))
 	rt.Bus.Register(appscm.CmdObserveCommit, appscm.ObserveCommitHandler())
-	rt.Bus.Register(appci.CmdCompleteBuild, appci.CompleteBuildHandler(rt.IDs, rt.Journal))
-	rt.Bus.Register(appver.CmdReportTestRun, appver.ReportTestRunHandler(rt.IDs, rt.Graph))
+	rt.Bus.Register(appci.CmdCompleteBuild, appci.CompleteBuildHandler(rt.IDs, appci.NewSCMStreamReaderOverJournal(rt.Journal)))
+	rt.Bus.Register(appver.CmdReportTestRun, appver.ReportTestRunHandler(rt.IDs, ports.NewEntityRefReaderOverGraphStore(rt.Graph)))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

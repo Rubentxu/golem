@@ -8,9 +8,10 @@ import (
 	"strings"
 
 	appcmd "github.com/Rubentxu/golem/internal/application/command"
+	"github.com/Rubentxu/golem/internal/application/ci"
+	"github.com/Rubentxu/golem/internal/application/supplychain"
 	"github.com/Rubentxu/golem/internal/ports"
 	domainrelease "github.com/Rubentxu/golem/internal/release"
-	domainsupplychain "github.com/Rubentxu/golem/internal/supplychain"
 )
 
 var (
@@ -35,7 +36,7 @@ type CreateCandidate struct {
 // CreateCandidateHandler validates that every artifact digest exists in
 // the tenant graph (they materialize from ci.build.completed events)
 // and journals the release candidate.
-func CreateCandidateHandler(gen ports.IDGenerator, graph ports.GraphStore) appcmd.Handler {
+func CreateCandidateHandler(gen ports.IDGenerator, artifactReader ci.ArtifactReader) appcmd.Handler {
 	return func(ctx context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
 		p, ok := cmd.Payload.(CreateCandidate)
 		if !ok {
@@ -53,7 +54,8 @@ func CreateCandidateHandler(gen ports.IDGenerator, graph ports.GraphStore) appcm
 				continue
 			}
 			seen[d] = true
-			if _, err := graph.GetNode(ctx, cmd.TenantID, d); err != nil {
+			exists, err := artifactReader.DigestExists(ctx, string(cmd.TenantID), d)
+			if err != nil || !exists {
 				return nil, fmt.Errorf("%w: %s", ErrUnknownArtifact, d)
 			}
 			artifacts = append(artifacts, d)
@@ -72,7 +74,7 @@ func CreateCandidateHandler(gen ports.IDGenerator, graph ports.GraphStore) appcm
 // policy when an artifact carries supply-chain data (HAS_SBOM or ATTESTED_BY edges);
 // otherwise it falls back to the original v1 VERIFIES walk for that artifact.
 // Green iff no reasons. The evaluation is journaled as evidence (evidence first).
-func EvaluateGateHandler(graph ports.GraphStore) appcmd.Handler {
+func EvaluateGateHandler(releaseReader ReleaseGraphReader, evidenceReader supplychain.SupplyChainEvidenceReader, artifactVerifier ArtifactVerifier) appcmd.Handler {
 	return func(ctx context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
 		p, ok := cmd.Payload.(EvaluateGate)
 		if !ok {
@@ -82,21 +84,37 @@ func EvaluateGateHandler(graph ports.GraphStore) appcmd.Handler {
 			return nil, ErrReleaseNotFound
 		}
 
-		node, err := graph.GetNode(ctx, cmd.TenantID, p.ReleaseID)
+		// Check release exists via ReleaseGraphReader.
+		exists, err := releaseReader.NodeExists(ctx, string(cmd.TenantID), p.ReleaseID)
+		if err != nil || !exists {
+			return nil, ErrReleaseNotFound
+		}
+
+		// Get artifact digests via ReleaseGraphReader.
+		artifacts, err := releaseReader.GetReleaseArtifactDigests(ctx, string(cmd.TenantID), p.ReleaseID)
 		if err != nil {
 			return nil, ErrReleaseNotFound
 		}
-		rawArtifacts, _ := node.Attributes["artifacts"].([]any)
 
-		details := make([]domainrelease.GateDetail, 0, len(rawArtifacts))
+		details := make([]domainrelease.GateDetail, 0, len(artifacts))
 		evidence := make(map[string]domainrelease.ArtifactEvidence)
 		reasons := []string{}
 
-		for _, ra := range rawArtifacts {
-			digest, _ := ra.(string)
-
+		for _, digest := range artifacts {
 			// Collect supply-chain evidence via typed traversal.
-			ev := collectSupplyChainEvidence(ctx, graph, cmd.TenantID, digest)
+			ev, err := evidenceReader.CollectEvidence(ctx, string(cmd.TenantID), digest)
+			if err != nil {
+				return nil, err
+			}
+
+			// Convert supplychain.Evidence to internal evidence type for ToArtifactEvidence.
+			internalEv := supplyChainEvidence{
+				SBOMIDs:              ev.SBOMIDs,
+				TotalAttestations:     ev.TotalAttestations,
+				VerifiedAttestations: ev.VerifiedAttestations,
+				OpenVulns:            ev.OpenVulnIDs,
+				MITigatedVulns:       ev.MitigatedVulnIDs,
+			}
 
 			// Check for supply-chain data presence.
 			hasSBOM := len(ev.SBOMIDs) > 0
@@ -104,7 +122,7 @@ func EvaluateGateHandler(graph ports.GraphStore) appcmd.Handler {
 
 			// v2 evaluation when supply-chain data exists.
 			if hasSBOM || hasAttestations {
-				evidence[digest] = ev.ToArtifactEvidence(digest)
+				evidence[digest] = internalEv.ToArtifactEvidence(digest)
 
 				if !hasSBOM {
 					reasons = append(reasons, "sbom_missing")
@@ -112,7 +130,7 @@ func EvaluateGateHandler(graph ports.GraphStore) appcmd.Handler {
 				if ev.VerifiedAttestations < ev.TotalAttestations {
 					reasons = append(reasons, "attestation_unverified")
 				}
-				for _, vuln := range ev.OpenVulns {
+				for _, vuln := range ev.OpenVulnIDs {
 					reasons = append(reasons, "vuln_unmitigated:"+vuln)
 				}
 
@@ -120,7 +138,7 @@ func EvaluateGateHandler(graph ports.GraphStore) appcmd.Handler {
 			} else {
 				// Fall back to v1 semantics when no supply-chain data exists.
 				// Bootstrap rule: v1 behavior preserved for existing artifacts without SBOM/attestation.
-				v1Verified := artifactVerified(ctx, graph, cmd.TenantID, digest)
+				v1Verified := artifactVerifier.CheckArtifactVerification(ctx, string(cmd.TenantID), digest)
 				details = append(details, domainrelease.GateDetail{Artifact: digest, Verified: v1Verified})
 				if !v1Verified {
 					reasons = append(reasons, "vuln_unmitigated:v1_fallback") // sentinel for v1 red
@@ -178,169 +196,6 @@ func (e supplyChainEvidence) ToArtifactEvidence(digest string) domainrelease.Art
 	ev.Vulnerabilities.Open = len(e.OpenVulns)
 	ev.Vulnerabilities.Mitigated = len(e.MITigatedVulns)
 	return ev
-}
-
-// collectSupplyChainEvidence walks supply-chain edges from an artifact and returns
-// typed evidence under the supply-chain-gate-v1 policy.
-//
-// Walk path: artifact → HAS_SBOM → SBOM → CONTAINS → PackageComponent → AFFECTED_BY → Vulnerability
-// Separate walk: artifact → ATTESTED_BY → Attestation
-// Mitigation check: vulnerability → MITIGATED_BY → VEXStatement
-func collectSupplyChainEvidence(ctx context.Context, graph ports.GraphStore, tenant ports.TenantID, artifactID string) supplyChainEvidence {
-	ev := supplyChainEvidence{}
-
-	// Walk 1: Find SBOMs attached to this artifact.
-	sbomWalk, _ := graph.Traversal(ctx, ports.TraversalQuery{
-		TenantID:  tenant,
-		Roots:     []string{artifactID},
-		EdgeTypes: []string{domainsupplychain.RelationHAS_SBOM},
-		Kinds:     []string{domainsupplychain.KindSBOM},
-		MaxDepth:  1,
-		MaxNodes:  100,
-		MaxEdges:  200,
-	})
-	for _, n := range sbomWalk.Nodes {
-		if n.ID != artifactID {
-			ev.SBOMIDs = append(ev.SBOMIDs, n.ID)
-		}
-	}
-
-	// Walk 2: Walk artifact → ATTESTED_BY → Attestation.
-	attWalk, _ := graph.Traversal(ctx, ports.TraversalQuery{
-		TenantID:  tenant,
-		Roots:     []string{artifactID},
-		EdgeTypes: []string{domainsupplychain.RelationATTESTED_BY},
-		Kinds:     []string{domainsupplychain.KindAttestation},
-		MaxDepth:  1,
-		MaxNodes:  100,
-		MaxEdges:  200,
-	})
-	ev.TotalAttestations = len(attWalk.Nodes) - 1 // subtract root artifact node
-	if ev.TotalAttestations < 0 {
-		ev.TotalAttestations = 0
-	}
-	for _, n := range attWalk.Nodes {
-		if n.ID == artifactID {
-			continue
-		}
-		if ver, _ := n.Attributes["verification"].(string); ver == domainsupplychain.VerificationVerified {
-			ev.VerifiedAttestations++
-		}
-	}
-
-	if len(ev.SBOMIDs) == 0 {
-		return ev // no SBOM means no vulnerability walk needed
-	}
-
-	// Walk 3: For each SBOM, walk SBOM → CONTAINS → PackageComponent.
-	componentIDs := []string{}
-	for _, sbomID := range ev.SBOMIDs {
-		compWalk, _ := graph.Traversal(ctx, ports.TraversalQuery{
-			TenantID:  tenant,
-			Roots:     []string{sbomID},
-			EdgeTypes: []string{domainsupplychain.RelationCONTAINS},
-			Kinds:     []string{domainsupplychain.KindPackageComponent},
-			MaxDepth:  1,
-			MaxNodes:  500,
-			MaxEdges:  1000,
-		})
-		for _, n := range compWalk.Nodes {
-			if n.ID != sbomID {
-				componentIDs = append(componentIDs, n.ID)
-			}
-		}
-	}
-
-	// Walk 4: For each component, walk COMPONENT → AFFECTED_BY → Vulnerability.
-	vulnSet := map[string]bool{}
-	for _, compID := range componentIDs {
-		vulnWalk, _ := graph.Traversal(ctx, ports.TraversalQuery{
-			TenantID:  tenant,
-			Roots:     []string{compID},
-			EdgeTypes: []string{domainsupplychain.RelationAFFECTED_BY},
-			Kinds:     []string{domainsupplychain.KindVulnerability},
-			MaxDepth:  1,
-			MaxNodes:  500,
-			MaxEdges:  1000,
-		})
-		for _, n := range vulnWalk.Nodes {
-			if n.ID != compID {
-				vulnSet[n.ID] = true
-			}
-		}
-	}
-
-	for vulnID := range vulnSet {
-		ev.VulnIDs = append(ev.VulnIDs, vulnID)
-	}
-
-	// Walk 5: For each vulnerability, check MITIGATED_BY → VEXStatement.
-	mitigatedSet := map[string]bool{}
-	for _, vulnID := range ev.VulnIDs {
-		mitWalk, _ := graph.Traversal(ctx, ports.TraversalQuery{
-			TenantID:  tenant,
-			Roots:     []string{vulnID},
-			EdgeTypes: []string{domainsupplychain.RelationMITIGATED_BY},
-			Kinds:     []string{domainsupplychain.KindVEXStatement},
-			MaxDepth:  1,
-			MaxNodes:  50,
-			MaxEdges:  100,
-		})
-		for _, n := range mitWalk.Nodes {
-			if n.ID != vulnID {
-				mitigatedSet[n.ID] = true
-			}
-		}
-	}
-
-	// Classify vulnerabilities: open = not mitigated; mitigated = has MITIGATED_BY edge.
-	// Only high/critical unmitigated vulns contribute to red reasons.
-	openHighCritical := []string{}
-	for _, vulnID := range ev.VulnIDs {
-		if _, mitigated := mitigatedSet[vulnID]; !mitigated {
-			// Check severity attribute on the vuln node.
-			vulnNode, err := graph.GetNode(ctx, tenant, vulnID)
-			if err == nil {
-				severity, _ := vulnNode.Attributes["severity"].(string)
-				if severity == domainsupplychain.SeverityHigh || severity == domainsupplychain.SeverityCritical {
-					openHighCritical = append(openHighCritical, vulnID)
-				}
-			}
-		} else {
-			ev.MITigatedVulns = append(ev.MITigatedVulns, vulnID)
-		}
-	}
-	ev.OpenVulns = openHighCritical
-
-	return ev
-}
-
-// artifactVerified walks the artifact's incident VERIFIES edges and
-// checks whether any source TestRun passed.
-func artifactVerified(ctx context.Context, graph ports.GraphStore, tenant ports.TenantID, digest string) bool {
-	sub, err := graph.Neighborhood(ctx, ports.NeighborhoodQuery{
-		TenantID: tenant, Roots: []string{digest}, MaxDepth: 1, MaxNodes: 50, MaxEdges: 100,
-	})
-	if err != nil {
-		return false
-	}
-	for _, e := range sub.Edges {
-		if e.Type != "VERIFIES" {
-			continue
-		}
-		runID := e.SourceID
-		if runID == digest {
-			runID = e.TargetID
-		}
-		run, err := graph.GetNode(ctx, tenant, runID)
-		if err != nil {
-			continue
-		}
-		if status, _ := run.Attributes["status"].(string); status == "passed" {
-			return true
-		}
-	}
-	return false
 }
 
 // EvaluateGate is the payload of CmdEvaluateGate.

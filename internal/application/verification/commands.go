@@ -13,6 +13,9 @@ import (
 	domainver "github.com/Rubentxu/golem/internal/verification"
 )
 
+// EntityRefReader is the kernel-level narrow port for entity existence checks.
+type EntityRefReader = ports.EntityRefReader
+
 var (
 	ErrEmptyCase        = errors.New("verification: test case is mandatory")
 	ErrInvalidRunStatus = errors.New("verification: status must be passed|failed|skipped")
@@ -37,7 +40,7 @@ type ReportTestRun struct {
 // ReportTestRunHandler returns the handler for CmdReportTestRun. The
 // verified entity must exist in the graph projection (point read) —
 // same consistency model as work links.
-func ReportTestRunHandler(gen ports.IDGenerator, graph ports.GraphStore) appcmd.Handler {
+func ReportTestRunHandler(gen ports.IDGenerator, entityReader EntityRefReader) appcmd.Handler {
 	return func(ctx context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
 		p, ok := cmd.Payload.(ReportTestRun)
 		if !ok {
@@ -55,7 +58,12 @@ func ReportTestRunHandler(gen ports.IDGenerator, graph ports.GraphStore) appcmd.
 		if target == "" {
 			return nil, fmt.Errorf("%w: empty verifies", ErrUnknownTarget)
 		}
-		if _, err := graph.GetNode(ctx, cmd.TenantID, target); err != nil {
+		// Verify the target requirement exists via EntityRefReader.
+		exists, err := entityReader.Exists(ctx, cmd.TenantID, "Requirement", target)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrUnknownTarget, target)
+		}
+		if !exists {
 			return nil, fmt.Errorf("%w: %s", ErrUnknownTarget, target)
 		}
 

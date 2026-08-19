@@ -38,8 +38,8 @@ func TestSearchProjectionAndRebuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, rt.Graph))
-	rt.Bus.Register(appwork.CmdUpdateWorkItem, appwork.UpdateWorkItemHandler(rt.Journal, rt.Graph))
+	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, appwork.NewWorkItemReaderOverGraphStore(rt.Graph)))
+	rt.Bus.Register(appwork.CmdUpdateWorkItem, appwork.UpdateWorkItemHandler(rt.Journal, appwork.NewWorkItemReaderOverGraphStore(rt.Graph)))
 	rt.Bus.Register(appreq.CmdCreateRequirement, appreq.CreateRequirementHandler(rt.IDs))
 
 	ctx := context.Background()

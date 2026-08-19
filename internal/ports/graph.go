@@ -119,3 +119,14 @@ type GraphStore interface {
 	ListEdges(ctx context.Context, tenant TenantID) ([]Edge, error)
 	Capabilities(ctx context.Context) GraphCapabilities
 }
+
+// EntityRefReader is the kernel-level port for reading entity existence and kind.
+// It is used by contexts that need to verify entity existence without full
+// graph traversal.
+type EntityRefReader interface {
+	// Exists returns true if an entity with the given kind and id exists.
+	Exists(ctx context.Context, tenant TenantID, kind, id string) (bool, error)
+	// KindOf returns the kind of the entity with the given id.
+	// Returns ErrNodeNotFound if the entity does not exist.
+	KindOf(ctx context.Context, tenant TenantID, id string) (string, error)
+}

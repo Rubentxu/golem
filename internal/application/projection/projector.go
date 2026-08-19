@@ -50,247 +50,20 @@ const (
 type Projector struct{}
 
 // Project interprets one event. The returned mutation has zero Ops when
-// the event does not affect the graph.
+// the event does not affect the graph. It consults the global Registry first;
+// if no registered Projection claims the event type, it falls back to the
+// legacy switch in projectSingle.
 func (Projector) Project(env ports.RawEvent) (ports.GraphMutation, error) {
-	m := ports.GraphMutation{TenantID: ports.TenantID(env.TenantID)}
-
-	switch env.EventType {
-	case work.EventItemCreated:
-		var p work.ItemCreated
-		if err := json.Unmarshal(env.Payload, &p); err != nil {
-			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
-		}
-		if p.ItemID == "" {
-			return m, fmt.Errorf("projection %s: empty item_id", env.EventType)
-		}
-		attrs := map[string]any{
-			"title":  p.Title,
-			"type":   p.ItemType,
-			"status": p.Status,
-		}
-		if p.TypeName != "" {
-			attrs["type_name"] = p.TypeName
-		}
-		if p.External.Provider != "" {
-			attrs["external_provider"] = p.External.Provider
-			attrs["external_id"] = p.External.ExternalID
-		}
-		for k, v := range p.Fields {
-			// Namespace custom fields to avoid collisions with canonical
-			// attributes.
-			attrs["field_"+k] = v
-		}
-		m.Ops = append(m.Ops, nodeUpsert(p.ItemID, KindWorkItem, attrs))
-
-	case work.EventItemUpdated:
-		var p work.ItemUpdated
-		if err := json.Unmarshal(env.Payload, &p); err != nil {
-			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
-		}
-		if p.ItemID == "" {
-			return m, fmt.Errorf("projection %s: empty item_id", env.EventType)
-		}
-		attrs := map[string]any{}
-		if p.Title != nil {
-			attrs["title"] = *p.Title
-		}
-		if p.Status != nil {
-			attrs["status"] = *p.Status
-		}
-		if len(attrs) > 0 {
-			m.Ops = append(m.Ops, nodeUpsert(p.ItemID, KindWorkItem, attrs))
-		}
-
-	case requirements.EventRequirementCreated:
-		var p requirements.RequirementCreated
-		if err := json.Unmarshal(env.Payload, &p); err != nil {
-			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
-		}
-		if p.RequirementID == "" {
-			return m, fmt.Errorf("projection %s: empty requirement_id", env.EventType)
-		}
-		m.Ops = append(m.Ops, nodeUpsert(p.RequirementID, KindRequirement, map[string]any{
-			"title":     p.Title,
-			"statement": p.Statement,
-			"status":    p.Status,
-		}))
-
-	case projects.EventProjectCreated:
-		var p projects.ProjectCreated
-		if err := json.Unmarshal(env.Payload, &p); err != nil {
-			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
-		}
-		if p.ProjectID == "" {
-			return m, fmt.Errorf("projection %s: empty project_id", env.EventType)
-		}
-		attrs := map[string]any{"name": p.Name, "description": p.Description}
-		if p.External.Provider != "" {
-			attrs["external_provider"] = p.External.Provider
-			attrs["external_id"] = p.External.ExternalID
-		}
-		m.Ops = append(m.Ops, nodeUpsert(p.ProjectID, KindProject, attrs))
-
-	case planning.EventIterationCreated:
-		var p planning.IterationCreated
-		if err := json.Unmarshal(env.Payload, &p); err != nil {
-			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
-		}
-		if p.IterationID == "" {
-			return m, fmt.Errorf("projection %s: empty iteration_id", env.EventType)
-		}
-		m.Ops = append(m.Ops, nodeUpsert(p.IterationID, KindIteration, map[string]any{
-			"name": p.Name, "start": p.Start.UTC().Format(time.RFC3339), "end": p.End.UTC().Format(time.RFC3339),
-		}))
-
-	case planning.EventMilestoneCreated:
-		var p planning.MilestoneCreated
-		if err := json.Unmarshal(env.Payload, &p); err != nil {
-			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
-		}
-		if p.MilestoneID == "" {
-			return m, fmt.Errorf("projection %s: empty milestone_id", env.EventType)
-		}
-		m.Ops = append(m.Ops, nodeUpsert(p.MilestoneID, KindMilestone, map[string]any{
-			"name": p.Name, "target_date": p.TargetDate.UTC().Format(time.RFC3339),
-		}))
-
-	case scm.EventCommitObserved:
-		var p scm.CommitObserved
-		if err := json.Unmarshal(env.Payload, &p); err != nil {
-			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
-		}
-		if p.SHA == "" {
-			return m, fmt.Errorf("projection %s: empty sha", env.EventType)
-		}
-		m.Ops = append(m.Ops, nodeUpsert(p.SHA, KindCommit, map[string]any{
-			"repository": p.Repository, "message": p.Message,
-		}))
-		for i, reqID := range p.Implements {
-			m.Ops = append(m.Ops, edgeUpsert(edgeID(env.EventID, "impl", i), "IMPLEMENTS", p.SHA, reqID, causalAttrs(env)))
-		}
-
-	case ci.EventBuildCompleted:
-		var p ci.BuildCompleted
-		if err := json.Unmarshal(env.Payload, &p); err != nil {
-			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
-		}
-		if p.BuildID == "" || p.Commit == "" {
-			return m, fmt.Errorf("projection %s: build_id and commit are mandatory", env.EventType)
-		}
-		m.Ops = append(m.Ops, nodeUpsert(p.BuildID, KindBuild, map[string]any{
-			"pipeline": p.Pipeline, "status": p.Status, "commit": p.Commit,
-		}))
-		// Commit ──BUILT_BY──> Build (VISION lineage direction).
-		m.Ops = append(m.Ops, edgeUpsert(edgeID(env.EventID, "builtby", 0), "BUILT_BY", p.Commit, p.BuildID, causalAttrs(env)))
-		for i, a := range p.Artifacts {
-			// ADR-022: artifact identity is the digest itself.
-			m.Ops = append(m.Ops, nodeUpsert(a.Digest, a.Kind, map[string]any{
-				"name": a.Name,
-			}))
-			m.Ops = append(m.Ops, edgeUpsert(edgeID(env.EventID, "prod", i), "PRODUCED", p.BuildID, a.Digest, causalAttrs(env)))
-		}
-
-	case verification.EventTestRunReported:
-		var p verification.TestRunReported
-		if err := json.Unmarshal(env.Payload, &p); err != nil {
-			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
-		}
-		if p.RunID == "" || p.Verifies == "" {
-			return m, fmt.Errorf("projection %s: run_id and verifies are mandatory", env.EventType)
-		}
-		m.Ops = append(m.Ops, nodeUpsert(p.RunID, KindTestRun, map[string]any{
-			"case": p.TestCase, "status": p.Status,
-		}))
-		m.Ops = append(m.Ops, edgeUpsert(edgeID(env.EventID, "ver", 0), "VERIFIES", p.RunID, p.Verifies, causalAttrs(env)))
-
-	case release.EventCandidateCreated:
-		var p release.CandidateCreated
-		if err := json.Unmarshal(env.Payload, &p); err != nil {
-			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
-		}
-		if p.ReleaseID == "" {
-			return m, fmt.Errorf("projection %s: release_id is mandatory", env.EventType)
-		}
-		artifacts := make([]any, 0, len(p.Artifacts))
-		for _, a := range p.Artifacts {
-			artifacts = append(artifacts, a)
-		}
-		m.Ops = append(m.Ops, nodeUpsert(p.ReleaseID, KindRelease, map[string]any{
-			"name": p.Name, "artifacts": artifacts, "gate_status": "pending",
-		}))
-		for i, digest := range p.Artifacts {
-			// Artifact ──RELEASED_AS──> Release (GRAPH_MODEL direction).
-			m.Ops = append(m.Ops, edgeUpsert(edgeID(env.EventID, "rel", i), "RELEASED_AS", digest, p.ReleaseID, causalAttrs(env)))
-		}
-
-	case release.EventGateEvaluated:
-		var p release.GateEvaluated
-		if err := json.Unmarshal(env.Payload, &p); err != nil {
-			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
-		}
-		if p.ReleaseID == "" {
-			return m, fmt.Errorf("projection %s: empty release_id", env.EventType)
-		}
-		m.Ops = append(m.Ops, nodeUpsert(p.ReleaseID, KindRelease, map[string]any{
-			"gate_status": p.Result,
-		}))
-
-	case work.EventTypeRegistered:
-		var p work.TypeRegistered
-		if err := json.Unmarshal(env.Payload, &p); err != nil {
-			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
-		}
-		if p.Name == "" {
-			return m, fmt.Errorf("projection %s: empty name", env.EventType)
-		}
-		attrs := map[string]any{
-			"name":    p.Name,
-			"initial": p.Initial,
-		}
-		// Slices are JSON-roundtrippable attributes (digest-stable).
-		if b, err := json.Marshal(p.States); err == nil {
-			attrs["states"] = json.RawMessage(b)
-		}
-		if b, err := json.Marshal(p.Transitions); err == nil {
-			attrs["transitions"] = json.RawMessage(b)
-		}
-		if b, err := json.Marshal(p.Fields); err == nil {
-			attrs["fields"] = json.RawMessage(b)
-		}
-		m.Ops = append(m.Ops, nodeUpsert(p.Name, KindWorkType, attrs))
-
-	case work.EventItemLinked:
-		var p work.ItemLinked
-		if err := json.Unmarshal(env.Payload, &p); err != nil {
-			return m, fmt.Errorf("projection %s: %w", env.EventType, err)
-		}
-		rel := canonicalRelation(p.Relation)
-		if p.FromID == "" || p.ToID == "" || rel == "" {
-			return m, fmt.Errorf("projection %s: from_id, to_id and relation are mandatory", env.EventType)
-		}
-		// Edge identity is the causing event: deterministic under replay
-		// and auditable back to the journal (causality everywhere).
-		m.Ops = append(m.Ops, edgeUpsert(env.EventID, rel, p.FromID, p.ToID, map[string]any{
-			"source_event": env.EventID,
-		}))
-
-	case supplychain.EventSBOMIngested,
-		supplychain.EventVulnerabilityReported,
-		supplychain.EventVEXStatementRecorded,
-		supplychain.EventAttestationIngested:
-		// Supply chain events may produce >500 ops (SBOM with many components).
-		// Project returns the first chunk; ProjectAll returns all chunks.
-		var err error
-		m, err = projectSingle(env)
-		if err != nil {
+	// Consult the global registry first (strangler-fig pattern).
+	if r := globalRegistry; r != nil {
+		if m, handled, err := r.Handle(env); err != nil {
 			return m, err
-		}
-		if len(m.Ops) > MaxOpsPerMutation {
-			m.Ops = m.Ops[:MaxOpsPerMutation]
+		} else if handled {
+			return m, nil
 		}
 	}
-
-	return m, nil
+	// Fall back to legacy switch.
+	return projectSingle(env)
 }
 
 // Deprecated: use projection.Runner directly. This shim exists for the
@@ -554,16 +327,16 @@ func projectSingle(env ports.RawEvent) (ports.GraphMutation, error) {
 		}))
 
 	case supplychain.EventSBOMIngested:
-		return projectSBOMIngested(env)
+		return ProjectSBOMIngested(env)
 
 	case supplychain.EventVulnerabilityReported:
-		return projectVulnerabilityReported(env)
+		return ProjectVulnerabilityReported(env)
 
 	case supplychain.EventVEXStatementRecorded:
-		return projectVEXStatement(env)
+		return ProjectVEXStatement(env)
 
 	case supplychain.EventAttestationIngested:
-		return projectAttestationIngested(env)
+		return ProjectAttestationIngested(env)
 	}
 
 	return m, nil
@@ -631,7 +404,8 @@ func mutationCtx(env ports.RawEvent) context.Context {
 // subject artifact does not exist in the graph.
 var ErrUnknownArtifact = fmt.Errorf("projection: attestation subject artifact not found")
 
-func projectSBOMIngested(env ports.RawEvent) (ports.GraphMutation, error) {
+// ProjectSBOMIngested projects an SBOM ingested event into graph mutations.
+func ProjectSBOMIngested(env ports.RawEvent) (ports.GraphMutation, error) {
 	m := ports.GraphMutation{TenantID: ports.TenantID(env.TenantID)}
 	var p supplychain.SBOMIngested
 	if err := json.Unmarshal(env.Payload, &p); err != nil {
@@ -687,7 +461,8 @@ func projectSBOMIngested(env ports.RawEvent) (ports.GraphMutation, error) {
 	return m, nil
 }
 
-func projectVulnerabilityReported(env ports.RawEvent) (ports.GraphMutation, error) {
+// ProjectVulnerabilityReported projects a vulnerability reported event into graph mutations.
+func ProjectVulnerabilityReported(env ports.RawEvent) (ports.GraphMutation, error) {
 	m := ports.GraphMutation{TenantID: ports.TenantID(env.TenantID)}
 	var p supplychain.VulnerabilityReported
 	if err := json.Unmarshal(env.Payload, &p); err != nil {
@@ -718,7 +493,8 @@ func projectVulnerabilityReported(env ports.RawEvent) (ports.GraphMutation, erro
 	return m, nil
 }
 
-func projectVEXStatement(env ports.RawEvent) (ports.GraphMutation, error) {
+// ProjectVEXStatement projects a VEX statement event into graph mutations.
+func ProjectVEXStatement(env ports.RawEvent) (ports.GraphMutation, error) {
 	m := ports.GraphMutation{TenantID: ports.TenantID(env.TenantID)}
 	var p supplychain.VEXStatementRecorded
 	if err := json.Unmarshal(env.Payload, &p); err != nil {
@@ -758,7 +534,8 @@ func projectVEXStatement(env ports.RawEvent) (ports.GraphMutation, error) {
 	return m, nil
 }
 
-func projectAttestationIngested(env ports.RawEvent) (ports.GraphMutation, error) {
+// ProjectAttestationIngested projects an attestation ingested event into graph mutations.
+func ProjectAttestationIngested(env ports.RawEvent) (ports.GraphMutation, error) {
 	m := ports.GraphMutation{TenantID: ports.TenantID(env.TenantID)}
 	var p supplychain.AttestationIngested
 	if err := json.Unmarshal(env.Payload, &p); err != nil {

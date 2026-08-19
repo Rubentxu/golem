@@ -233,7 +233,7 @@ func ReportVulnerabilityHandler() appcmd.Handler {
 // confirmed in the graph (or skips it if the product never appears).
 // Per spec: a VEX statement SHALL be recorded even if the referenced product
 // is unknown, with affected=0 and no edge created.
-func RecordVEXHandler(graph ports.GraphStore) appcmd.Handler {
+func RecordVEXHandler() appcmd.Handler {
 	return func(ctx context.Context, cmd appcmd.Command) ([]appcmd.EventDraft, error) {
 		p, ok := cmd.Payload.(RecordVEX)
 		if !ok {

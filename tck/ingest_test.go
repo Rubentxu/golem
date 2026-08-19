@@ -23,6 +23,7 @@ import (
 	appscm "github.com/Rubentxu/golem/internal/application/scm"
 	appver "github.com/Rubentxu/golem/internal/application/verification"
 	appwork "github.com/Rubentxu/golem/internal/application/work"
+	"github.com/Rubentxu/golem/internal/ports"
 )
 
 // TestIngestAndReleaseGate proves the provider event sinks (external
@@ -41,12 +42,12 @@ func TestIngestAndReleaseGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, rt.Graph))
+	rt.Bus.Register(appwork.CmdCreateWorkItem, appwork.CreateWorkItemHandler(rt.IDs, appwork.NewWorkItemReaderOverGraphStore(rt.Graph)))
 	rt.Bus.Register(appscm.CmdObserveCommit, appscm.ObserveCommitHandler())
-	rt.Bus.Register(appci.CmdCompleteBuild, appci.CompleteBuildHandler(rt.IDs, rt.Journal))
-	rt.Bus.Register(appver.CmdReportTestRun, appver.ReportTestRunHandler(rt.IDs, rt.Graph))
-	rt.Bus.Register(apprelease.CmdCreateCandidate, apprelease.CreateCandidateHandler(rt.IDs, rt.Graph))
-	rt.Bus.Register(apprelease.CmdEvaluateGate, apprelease.EvaluateGateHandler(rt.Graph))
+	rt.Bus.Register(appci.CmdCompleteBuild, appci.CompleteBuildHandler(rt.IDs, appci.NewSCMStreamReaderOverJournal(rt.Journal)))
+	rt.Bus.Register(appver.CmdReportTestRun, appver.ReportTestRunHandler(rt.IDs, ports.NewEntityRefReaderOverGraphStore(rt.Graph)))
+	rt.Bus.Register(apprelease.CmdCreateCandidate, apprelease.CreateCandidateHandler(rt.IDs, appci.NewArtifactReaderOverGraphStore(rt.Graph)))
+	rt.Bus.Register(apprelease.CmdEvaluateGate, apprelease.EvaluateGateHandler(apprelease.NewReleaseGraphReaderOverGraphStore(rt.Graph), apprelease.NewSupplyChainEvidenceReaderOverGraphStore(rt.Graph), apprelease.NewArtifactVerifierOverGraphStore(rt.Graph)))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
