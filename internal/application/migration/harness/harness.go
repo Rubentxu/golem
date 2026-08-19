@@ -234,6 +234,12 @@ func (h *Harness) stepReplaying(ctx context.Context) (Step, error) {
 	}
 
 	projector := projection.Projector{}
+	runner := &projection.Runner{
+		Projector:  projector,
+		Graph:      h.Target.Graph,
+		Checkpoint: h.Checkpoint,
+	}
+
 	for {
 		batch, newPos, err := h.Journal.Replay(ctx, cursorPos, 100)
 		if err != nil {
@@ -246,16 +252,15 @@ func (h *Harness) stepReplaying(ctx context.Context) (Step, error) {
 		}
 
 		for _, env := range batch {
-			applied, err := projection.ApplyIfHandled(projector, h.Target.Graph, env)
-			if err != nil {
+			result := runner.Run(ctx, env)
+			if result.Err != nil {
 				audit := newAudit(h.Journal, h.ids, h.clk, h.ID, "memstore", "memstore")
 				audit.rolledBack(ctx, RollbackSemanticDiff, "replaying")
-				return StepRolledBack, fmt.Errorf("apply event %s: %w", env.EventID, err)
+				return StepRolledBack, fmt.Errorf("apply event %s: %w", env.EventID, result.Err)
 			}
 			// Advance cursor even if the projector didn't handle the event.
 			// Unhandled events are skipped gracefully; we must not reprocess them.
 			cursorPos = newPos
-			_ = applied // deliberately unused: projector decides what it handles
 		}
 	}
 
