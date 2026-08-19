@@ -13,6 +13,7 @@ import (
 	fsregistry "github.com/Rubentxu/golem/adapters/registry/filesystem"
 	"github.com/Rubentxu/golem/cmd/golem/bootstrap"
 	"github.com/Rubentxu/golem/internal/api/httpapi"
+	"github.com/Rubentxu/golem/internal/api/httpapi/admin"
 	appci "github.com/Rubentxu/golem/internal/application/ci"
 	"github.com/Rubentxu/golem/internal/application/ingest"
 	appplanning "github.com/Rubentxu/golem/internal/application/planning"
@@ -68,6 +69,14 @@ func main() {
 		}
 	}()
 
+	// Wire M8 admin endpoints (ADR-081) — nil-safe: admin mux only mounted if runtime ports exist
+	var adminMux *admin.AdminMux
+	if rt.CellRouter != nil || rt.TenantCatalog != nil || rt.SLOTracker != nil || rt.UsageMeter != nil {
+		cells := admin.NewCellsHandler(rt.CellRouter, rt.TenantCatalog, nil)
+		queries := admin.NewQueriesHandler(rt.SLOTracker, rt.UsageMeter)
+		adminMux = admin.NewAdminMux(cells, queries)
+	}
+
 	addr := os.Getenv("GOLEM_API_ADDR")
 	if addr == "" {
 		addr = ":8080"
@@ -79,6 +88,7 @@ func main() {
 			WithIngest(ingest.New(rt.Bus)).
 			WithPacks(fsregistry.New(fsregistry.DefaultRoot, rt.Journal, rt.IDs, rt.Clock)).
 			WithObservability(obsbundle).
+			WithAdminHandlers(adminMux).
 			Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

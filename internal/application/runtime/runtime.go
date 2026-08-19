@@ -309,6 +309,54 @@ func (rt *Runtime) SearchBatch(ctx context.Context, batchSize int) (int, error) 
 	return indexed, nil
 }
 
+// WithCellRouter sets the cell router (nil-safe).
+func (rt *Runtime) WithCellRouter(cr ports.CellRouter) *Runtime {
+	rt.CellRouter = cr
+	return rt
+}
+
+// WithTenantCatalog sets the tenant catalog (nil-safe).
+func (rt *Runtime) WithTenantCatalog(tc ports.TenantCatalog) *Runtime {
+	rt.TenantCatalog = tc
+	return rt
+}
+
+// WithQuotaEnforcer sets the quota enforcer (nil-safe).
+func (rt *Runtime) WithQuotaEnforcer(qe ports.QuotaEnforcer) *Runtime {
+	rt.QuotaEnforcer = qe
+	return rt
+}
+
+// WithUsageMeter sets the usage meter (nil-safe).
+func (rt *Runtime) WithUsageMeter(um ports.UsageMeter) *Runtime {
+	rt.UsageMeter = um
+	return rt
+}
+
+// WithSLOTracker sets the SLO tracker (nil-safe).
+func (rt *Runtime) WithSLOTracker(st ports.SLOTracker) *Runtime {
+	rt.SLOTracker = st
+	return rt
+}
+
+// WithPaging sets the paging service (nil-safe).
+func (rt *Runtime) WithPaging(p ports.Paging) *Runtime {
+	rt.Paging = p
+	return rt
+}
+
+// WithAuthN sets the authN service (nil-safe).
+func (rt *Runtime) WithAuthN(a ports.AuthN) *Runtime {
+	rt.AuthN = a
+	return rt
+}
+
+// WithPackRegistry sets the pack registry (nil-safe).
+func (rt *Runtime) WithPackRegistry(pr ports.PackRegistry) *Runtime {
+	rt.PackRegistry = pr
+	return rt
+}
+
 // Run drives both tail loops until ctx is cancelled. Interval paces
 // polling between caught-up cycles. Run returns ctx.Err() on graceful
 // shutdown.

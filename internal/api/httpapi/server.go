@@ -188,6 +188,12 @@ func (s *Server) WithAuditLogger(l AuditLogger) *Server {
 	return s
 }
 
+// WithAdminHandlers sets the admin mux for /admin/* endpoints (ADR-081).
+func (s *Server) WithAdminHandlers(h *admin.AdminMux) *Server {
+	s.AdminHandlers = h
+	return s
+}
+
 // Handler returns the routed handler wrapped with the observability
 // middleware: correlation propagation (X-Correlation-Id, generated when
 // absent), request spans and status metrics.

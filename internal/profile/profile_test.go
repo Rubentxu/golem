@@ -229,6 +229,43 @@ func TestProfile_Validate_LLMAndPolicyRequired(t *testing.T) {
 	}
 }
 
+// TestProfile_LoadProd verifies that the prod.yaml profile validates
+// with all M8 port keys (AC-1 / ESC-001).
+func TestProfile_LoadProd(t *testing.T) {
+	tmpDir := t.TempDir()
+	prodYaml := `{"version":1,"name":"prod","adapters":{"journal":"bbolt","graph":"memstore","registry":"memstore","transport":"memstore","checkpoint":"memstore","search":"memstore","llm":"openai-compatible","policy":"memstore","cell-router":"staticrouter","tenant-catalog":"memstore","quota":"memstore","meter":"meter","paging":"webhook","slo":"slo","authn":"oidc","pack_registry":"filesystem"}}`
+	profileFile := filepath.Join(tmpDir, "golem-profile.prod.yaml")
+	if err := os.WriteFile(profileFile, []byte(prodYaml), 0644); err != nil {
+		t.Fatalf("write prod profile: %v", err)
+	}
+
+	oldCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getcwd: %v", err)
+	}
+	defer os.Chdir(oldCwd)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	profile, err := Load("prod")
+	if err != nil {
+		t.Fatalf("Load(prod): %v", err)
+	}
+	if profile.Name != "prod" {
+		t.Errorf("Name = %q, want prod", profile.Name)
+	}
+	// Verify all 8 M8 ports are present
+	for _, port := range []string{"cell-router", "tenant-catalog", "quota", "meter", "paging", "slo", "authn"} {
+		if profile.Adapter(port) == "" {
+			t.Errorf("Adapter(%q) = empty, want non-empty", port)
+		}
+	}
+	if profile.Adapter("pack_registry") == "" {
+		t.Error("Adapter(pack_registry) = empty, want filesystem")
+	}
+}
+
 // TestProfile_EvalConfig verifies that eval config is parsed correctly.
 func TestProfile_EvalConfig(t *testing.T) {
 	dev := DevProfile()
