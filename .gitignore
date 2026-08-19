@@ -17,3 +17,4 @@ coverage.out
 /golem-api
 /golem-worker
 /golemctl
+__pycache__/
