@@ -372,4 +372,3 @@ func TestCommandJournalBbolt(t *testing.T) {
 
 // suppress unused import warning
 var _ = os.Getenv
-

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	graphmem "github.com/Rubentxu/golem/adapters/graph/memstore"
 	checkpointmem "github.com/Rubentxu/golem/adapters/checkpoint/memstore"
+	graphmem "github.com/Rubentxu/golem/adapters/graph/memstore"
 	journalmem "github.com/Rubentxu/golem/adapters/journal/memstore"
 	"github.com/Rubentxu/golem/internal/application/projection"
 	"github.com/Rubentxu/golem/internal/ports"
@@ -17,8 +17,8 @@ import (
 
 // ProjectionRunnerTCKEnv holds the adapter factories for the projection runner TCK.
 type ProjectionRunnerTCKEnv struct {
-	Journal   func() ports.JournalStore   // provides Replay
-	Graph     func() ports.GraphStore
+	Journal    func() ports.JournalStore // provides Replay
+	Graph      func() ports.GraphStore
 	Checkpoint func() ports.CheckpointStore
 }
 
@@ -349,4 +349,3 @@ var (
 	_ = graphmem.NewGraph
 	_ = checkpointmem.NewCheckpoints
 )
-
