@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 
 	"github.com/Rubentxu/golem/internal/ports"
+	jumpcons "github.com/lithammer/go-jump-consistent-hash"
 )
 
 // Router implements ports.CellRouter with in-memory storage.
@@ -23,10 +24,16 @@ func (r *Router) Route(ctx context.Context, tenantID string) (ports.CellID, erro
 	if len(r.cells) == 0 {
 		return "", nil
 	}
-	h := fnv.New64a()
-	h.Write([]byte(tenantID))
-	idx := h.Sum64() % uint64(len(r.cells))
+	h := fnvHash(tenantID)
+	idx := jumpcons.Hash(h, int32(len(r.cells)))
 	return r.cells[idx], nil
+}
+
+// fnvHash computes FNV-1a hash as uint64.
+func fnvHash(s string) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(s))
+	return h.Sum64()
 }
 
 // Migrate is not implemented in memstore adapter.
