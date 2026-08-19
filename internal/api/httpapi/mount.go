@@ -38,12 +38,12 @@ type MultiMount interface {
 var ErrPatternOverlap = fmt.Errorf("httpapi: route pattern overlaps an existing registration")
 
 // MountDeps holds all typed interface dependencies needed by mounted handlers.
-// Exactly 13 named interface fields; no interface{} or any.
 type MountDeps struct {
 	Observability             ports.Observability
 	Bus                       CommandSubmitter
-	GraphNodeFetcher          ports.GraphNodeFetcher       // kernel narrow port: point read on graph
-	JournalStreamReader       ports.JournalStreamReader   // kernel narrow port: stream read on journal
+	GraphStore                ports.GraphStore          // for neighborhood/traversal queries
+	GraphNodeFetcher          ports.GraphNodeFetcher    // kernel narrow port: point read on graph
+	JournalStreamReader       ports.JournalStreamReader // kernel narrow port: stream read on journal
 	EntityRefReader           ports.EntityRefReader
 	WorkItemReader            WorkItemReader
 	WorkItemWriter            WorkItemWriter
@@ -160,9 +160,9 @@ type SupplyChainEvidence struct {
 
 // BlastRadiusResult is the blast radius analysis result.
 type BlastRadiusResult struct {
-	Component  string
-	Impacted   []string
-	MaxDepth   int
+	Component string
+	Impacted  []string
+	MaxDepth  int
 }
 
 // TestRun is the read model for a test run.

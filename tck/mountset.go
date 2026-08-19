@@ -8,10 +8,13 @@ import (
 )
 
 // NewMountSet builds the full set of HTTPMounts for the given runtime.
-// This is the same mount set used in production cmd/golem-api/main.go.
 func NewMountSet(rt *runtime.Runtime) []httpapi.HTTPMount {
 	return []httpapi.HTTPMount{
 		&httpapi.WorkMount{},
+		httpapi.NewReleaseMount(),
+		httpapi.NewVerificationMount(),
+		httpapi.NewPlatformMount(nil),
+		httpapi.NewAdminMount(nil, ports.Observability{}),
 	}
 }
 
@@ -20,16 +23,17 @@ func MountDepsForRT(rt *runtime.Runtime) httpapi.MountDeps {
 	return httpapi.MountDeps{
 		Observability:             obs.Fill(ports.Observability{}),
 		Bus:                       rt.Bus,
+		GraphStore:                rt.Graph,
 		GraphNodeFetcher:          ports.NewGraphNodeFetcherOverGraphStore(rt.Graph),
 		JournalStreamReader:       ports.NewJournalStreamReaderOverJournalStore(rt.Journal),
-		EntityRefReader:          ports.NewEntityRefReaderOverGraphStore(rt.Graph),
-		WorkItemReader:           nil, // Will be wired in T10
-		WorkItemWriter:           nil,
-		SCMStreamReader:          nil,
-		ArtifactReader:           nil,
-		ReleaseGraphReader:       nil,
+		EntityRefReader:           ports.NewEntityRefReaderOverGraphStore(rt.Graph),
+		WorkItemReader:            nil,
+		WorkItemWriter:            nil,
+		SCMStreamReader:           nil,
+		ArtifactReader:            nil,
+		ReleaseGraphReader:        nil,
 		SupplyChainEvidenceReader: nil,
-		BlastRadiusQuery:         nil,
-		TestRunReader:            nil,
+		BlastRadiusQuery:          nil,
+		TestRunReader:             nil,
 	}
 }
