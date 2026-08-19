@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/Rubentxu/golem/internal/ports"
+	jumpcons "github.com/lithammer/go-jump-consistent-hash"
 )
 
 // Router implements ports.CellRouter using jump hash for deterministic routing.
@@ -36,11 +37,16 @@ func (r *Router) Route(ctx context.Context, tenantID string) (ports.CellID, erro
 	return r.jumpHash(tenantID), nil
 }
 
-// jumpHash implements consistent hash with jump.
+// jumpHash implements Google "Jump Consistent Hash" (Lamping & Veach, 2014).
+// When a cell is added/removed, only ~1/n keys remap (not 100% like modular hash).
+// Reference: https://arxiv.org/abs/1406.2294
+// Uses lithammer/go-jump-consistent-hash (v1.0.2, MIT license).
 func (r *Router) jumpHash(tenantID string) ports.CellID {
-	// Simple hash for now; real implementation would use jump hash algorithm.
-	h := fnvHash(tenantID)
-	idx := h % uint64(len(r.cells))
+	n := len(r.cells)
+	if n == 0 {
+		return ""
+	}
+	idx := jumpcons.Hash(fnvHash(tenantID), int32(n))
 	return r.cells[idx]
 }
 
