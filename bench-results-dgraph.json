@@ -1,0 +1,20 @@
+{
+  "db": "dgraph",
+  "url": "http://localhost:8100",
+  "workloads": [
+    "W1_BulkLoad"
+  ],
+  "results": [
+    {
+      "name": "W1_BulkLoad",
+      "duration_ms": 8088.9400140004,
+      "ops": 6000,
+      "throughput": 741.7535535700788,
+      "p50_ms": 0,
+      "p95_ms": 0,
+      "p99_ms": 0,
+      "errors": 0,
+      "truncated": false
+    }
+  ]
+}

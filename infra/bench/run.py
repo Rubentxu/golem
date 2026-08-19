@@ -46,7 +46,8 @@ def new_client(db: str, url: str):
 # ── Benchmark pipeline ──────────────────────────────────────────────────────
 
 def run_benchmark(db: str, url: str, workloads: list[str],
-                 *, nodes: int = 100_000, queries: int = 1000) -> list[WorkloadResult]:
+                 *, nodes: int = 100_000, edges: int = 500_000,
+                 queries: int = 1000, reads: int = 10_000) -> list[WorkloadResult]:
     """Full benchmark pipeline: health → clear → create_schema → run workloads."""
     print(f"\n{'='*60}")
     print(f"  Benchmark: {db.upper()}")
@@ -92,9 +93,11 @@ def run_benchmark(db: str, url: str, workloads: list[str],
 
         # Pass size params
         if wl_name == "W1":
-            result = workload_fn(client, nodes=nodes)
+            result = workload_fn(client, nodes=nodes, edges=edges)
         elif wl_name in ("W2", "W3"):
             result = workload_fn(client, queries=queries)
+        elif wl_name == "W4":
+            result = workload_fn(client, reads=reads)
         else:
             result = workload_fn(client)
 
@@ -249,8 +252,12 @@ def main():
                        help="Workloads to run (default: all)")
     parser.add_argument("--nodes", type=int, default=100_000,
                        help="Number of nodes for W1 bulk load (default: 100000)")
+    parser.add_argument("--edges", type=int, default=500_000,
+                       help="Number of edges for W1 bulk load (default: 500000)")
     parser.add_argument("--queries", type=int, default=1000,
                        help="Number of queries for W2/W3 (default: 1000)")
+    parser.add_argument("--reads", type=int, default=10_000,
+                       help="Number of reads for W4 point read (default: 10000)")
     parser.add_argument("--tck", action="store_true",
                        help="Run TCK validation before benchmarks")
     parser.add_argument("--output", type=Path,
@@ -265,7 +272,8 @@ def main():
 
     # Run benchmark
     results = run_benchmark(args.db, args.url, args.workloads,
-                           nodes=args.nodes, queries=args.queries)
+                           nodes=args.nodes, edges=args.edges,
+                           queries=args.queries, reads=args.reads)
 
     # Write JSON output
     if args.output:

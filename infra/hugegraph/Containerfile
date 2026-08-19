@@ -18,5 +18,11 @@ FROM docker.io/hugegraph/hugegraph:latest
 
 EXPOSE 8080 8090 8081
 
-# The official image starts HugeGraphServer + uses RocksDB as backend
-# No extra config needed for single-node benchmark
+# Fix: bind the HugeGraph graph to the Gremlin traversal source 'g'.
+# The official image ships with graphs: {} (empty), so 'g' is not bound.
+#
+# Two fixes applied:
+# 1. gremlin-server.yaml — loads hugegraph-init.groovy instead of empty-sample.groovy
+# 2. hugegraph-init.groovy — opens the graph and binds it to 'g'
+COPY gremlin-server.yaml /hugegraph-server/conf/gremlin-server.yaml
+COPY hugegraph-init.groovy /hugegraph-server/scripts/hugegraph-init.groovy
