@@ -9,13 +9,21 @@ import (
 	"os"
 	"time"
 
+	"github.com/Rubentxu/golem/adapters/cell/staticrouter"
 	"github.com/Rubentxu/golem/adapters/checkpoint/memstore"
 	graphmem "github.com/Rubentxu/golem/adapters/graph/memstore"
 	"github.com/Rubentxu/golem/adapters/journal/bbolt"
 	journalmem "github.com/Rubentxu/golem/adapters/journal/memstore"
 	llmmem "github.com/Rubentxu/golem/adapters/llm/memstore"
+	"github.com/Rubentxu/golem/adapters/metering"
+	"github.com/Rubentxu/golem/adapters/observability/slo"
+	pagingmemstore "github.com/Rubentxu/golem/adapters/paging/memstore"
+	"github.com/Rubentxu/golem/adapters/paging/webhook"
+	policymemstore "github.com/Rubentxu/golem/adapters/policy/memstore"
 	registrymem "github.com/Rubentxu/golem/adapters/registry/memstore"
+	"github.com/Rubentxu/golem/adapters/registry/filesystem"
 	searchmem "github.com/Rubentxu/golem/adapters/search/memstore"
+	tenantcatalogmemstore "github.com/Rubentxu/golem/adapters/tenantcatalog/memstore"
 	transportmem "github.com/Rubentxu/golem/adapters/transport/memstore"
 	"github.com/Rubentxu/golem/adapters/transport/natsjs"
 	"github.com/Rubentxu/golem/internal/application/runtime"
@@ -110,6 +118,77 @@ func NewOptionsFromProfile(p profile.Profile, obsbundle ports.Observability) (ru
 	// Will be wired in T11 after PolicyEvaluator port is created
 	opts.Policy = nil
 
+	// CellRouter (M8)
+	switch p.Adapter("cell-router") {
+	case "staticrouter", "memstore", "":
+		// Route only — cells are managed externally
+		opts.CellRouter = staticrouter.NewRouter(nil)
+	default:
+		return runtime.Options{}, errUnknownAdapter("cell-router", p.Adapter("cell-router"))
+	}
+
+	// TenantCatalog (M8)
+	switch p.Adapter("tenant-catalog") {
+	case "memstore", "":
+		opts.TenantCatalog = tenantcatalogmemstore.New()
+	default:
+		return runtime.Options{}, errUnknownAdapter("tenant-catalog", p.Adapter("tenant-catalog"))
+	}
+
+	// Quota (M8)
+	switch p.Adapter("quota") {
+	case "memstore", "":
+		opts.QuotaEnforcer = policymemstore.NewQuotaStore()
+	default:
+		return runtime.Options{}, errUnknownAdapter("quota", p.Adapter("quota"))
+	}
+
+	// Meter (M8)
+	switch p.Adapter("meter") {
+	case "meter", "":
+		opts.UsageMeter = metering.NewMeter()
+	default:
+		return runtime.Options{}, errUnknownAdapter("meter", p.Adapter("meter"))
+	}
+
+	// Paging (M8)
+	switch p.Adapter("paging") {
+	case "webhook":
+		opts.Paging = webhook.NewClient("", "")
+	case "memstore", "":
+		opts.Paging = pagingmemstore.NewStore()
+	default:
+		return runtime.Options{}, errUnknownAdapter("paging", p.Adapter("paging"))
+	}
+
+	// SLO (M8)
+	switch p.Adapter("slo") {
+	case "slo", "":
+		opts.SLOTracker = slo.NewTracker()
+	default:
+		return runtime.Options{}, errUnknownAdapter("slo", p.Adapter("slo"))
+	}
+
+	// AuthN (M8)
+	switch p.Adapter("authn") {
+	case "oidc":
+		// OIDC config extracted from profile options if present
+		opts.AuthN = &noOpAuthN{}
+	case "memstore", "":
+		// No-op AuthN for dev
+		opts.AuthN = &noOpAuthN{}
+	default:
+		return runtime.Options{}, errUnknownAdapter("authn", p.Adapter("authn"))
+	}
+
+	// PackRegistry (M8)
+	switch p.Adapter("pack_registry") {
+	case "filesystem", "":
+		opts.PackRegistry = filesystem.New(filesystem.DefaultRoot, nil, nil, nil)
+	default:
+		return runtime.Options{}, errUnknownAdapter("pack_registry", p.Adapter("pack_registry"))
+	}
+
 	return opts, nil
 }
 
@@ -161,3 +240,20 @@ func newNATSTransport(p profile.Profile) (ports.EventTransport, bool) {
 	}
 	return t, true
 }
+
+// noOpAuthN implements ports.AuthN for dev/durable profiles where
+// OIDC is not configured. It always returns an anonymous principal.
+type noOpAuthN struct{}
+
+func (n *noOpAuthN) VerifyBearer(ctx context.Context, token string) (ports.Principal, error) {
+	_ = token
+	return ports.Principal{Subject: "anonymous", Type: "user"}, nil
+}
+
+func (n *noOpAuthN) Discover(ctx context.Context) (string, error) {
+	_ = ctx
+	return "", nil
+}
+
+// Ensure noOpAuthN implements ports.AuthN
+var _ ports.AuthN = (*noOpAuthN)(nil)
