@@ -15,17 +15,23 @@ func NewMountSet(rt *runtime.Runtime) []httpapi.HTTPMount {
 		httpapi.NewVerificationMount(),
 		httpapi.NewPlatformMount(nil),
 		httpapi.NewAdminMount(nil, ports.Observability{}),
+		&httpapi.NeighborhoodMount{},
+		&httpapi.RequirementsMount{},
+		&httpapi.ProjectsMount{},
+		&httpapi.PlanningMount{},
+		&httpapi.SCMMount{},
+		&httpapi.CIMount{},
 	}
 }
 
 // MountDepsForRT builds MountDeps from a runtime.Runtime with all available ports wired.
 func MountDepsForRT(rt *runtime.Runtime) httpapi.MountDeps {
 	return httpapi.MountDeps{
-		Observability:       obs.Fill(ports.Observability{}),
-		Bus:                 rt.Bus,
-		GraphStore:          rt.Graph,
-		GraphNodeFetcher:    ports.NewGraphNodeFetcherOverGraphStore(rt.Graph),
-		JournalStreamReader: ports.NewJournalStreamReaderOverJournalStore(rt.Journal),
-		Journal:             rt.Journal,
+		Observability:        obs.Fill(ports.Observability{}),
+		Bus:                  rt.Bus,
+		GraphStore:           rt.Graph,
+		GraphNodeFetcher:     ports.NewGraphNodeFetcherOverGraphStore(rt.Graph),
+		JournalStreamReader:  ports.NewJournalStreamReaderOverJournalStore(rt.Journal),
+		Journal:              rt.Journal,
 	}
 }

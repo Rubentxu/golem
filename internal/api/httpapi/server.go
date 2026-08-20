@@ -254,21 +254,10 @@ func (s *Server) routesWithMounts() http.Handler {
 		}
 	}
 
-	// Register legacy routes not covered by any mount.
-	// Routes covered by mounts: PlatformMount (healthz, readyz, status, metrics),
-	// WorkMount (work-items, work-types), VerificationMount (test/runs, trace),
-	// ReleaseMount (releases, blast-radius), AdminMount (admin/*).
-	mux.HandleFunc("POST /api/v1/packs/activate", s.handleActivatePack)
-	mux.HandleFunc("POST /api/v1/requirements", s.handleCreateRequirement)
-	mux.HandleFunc("GET /api/v1/requirements/{id}", s.handleGetRequirement)
-	mux.HandleFunc("POST /api/v1/graph/neighborhood", s.handleNeighborhood)
+	// Register legacy routes not covered by Mounts (search, packs, ingest
+	// depend on Server fields not available in MountDeps).
 	mux.HandleFunc("GET /api/v1/search", s.handleSearch)
-	mux.HandleFunc("POST /api/v1/projects", s.handleCreateProject)
-	mux.HandleFunc("POST /api/v1/planning/iterations", s.handleCreateIteration)
-	mux.HandleFunc("POST /api/v1/planning/milestones", s.handleCreateMilestone)
-	mux.HandleFunc("GET /api/v1/planning/iterations/{id}/board", s.handleIterationBoard)
-	mux.HandleFunc("POST /api/v1/scm/commits", s.handleObserveCommit)
-	mux.HandleFunc("POST /api/v1/ci/builds", s.handleCompleteBuild)
+	mux.HandleFunc("POST /api/v1/packs/activate", s.handleActivatePack)
 	mux.HandleFunc("POST /api/v1/ingest/{provider}", s.handleIngest)
 
 	return mux
