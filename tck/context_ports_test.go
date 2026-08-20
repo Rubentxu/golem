@@ -183,10 +183,14 @@ func RunArtifactReaderPortTCK(t *testing.T, env PortTCKEnv) {
 
 	t.Run("TCK-PORT-04-01 DigestExists returns true for seeded artifact", func(t *testing.T) {
 		graph := env.Graph
+		buildID := "build-001"
 
-		// Seed an artifact node.
+		// Seed an artifact node with an inbound PRODUCED edge from a build node.
+		// DigestExists now identifies artifacts by the PRODUCED edge (SCN-CI-03), not by Kind.
 		seedGraph(t, graph, []ports.GraphOp{
-			mkGraphNode(digest, "Artifact", map[string]any{"digest": digest}),
+			mkGraphNode(buildID, "Build", map[string]any{"id": buildID}),
+			mkGraphNode(digest, "ContainerImage", map[string]any{"digest": digest}),
+			mkGraphEdge("e-produced", "PRODUCED", buildID, digest),
 		})
 
 		reader := appci.NewArtifactReaderOverGraphStore(graph)

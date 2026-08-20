@@ -443,6 +443,8 @@ func (m *WorkMount) writeCommandError(w http.ResponseWriter, err error, corr str
 		m.problem(w, http.StatusUnprocessableEntity, CodeDomainRejection, err.Error(), corr)
 	case errors.Is(err, appwork.ErrItemNotFound):
 		m.problem(w, http.StatusNotFound, CodeNotFound, err.Error(), corr)
+	case errors.Is(err, ports.ErrVersionConflict):
+		m.problem(w, http.StatusConflict, CodeRevisionConflict, err.Error(), corr)
 	default:
 		m.problem(w, http.StatusInternalServerError, CodeInternal, "command failed", corr)
 	}
