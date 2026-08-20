@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -37,30 +38,37 @@ type MultiMount interface {
 // {param} wildcards allowed for sibling routes with shared prefix).
 var ErrPatternOverlap = fmt.Errorf("httpapi: route pattern overlaps an existing registration")
 
-// MountDeps holds all typed interface dependencies needed by mounted handlers.
-type MountDeps struct {
-	Observability             ports.Observability
-	Bus                       CommandSubmitter
-	GraphStore                ports.GraphStore          // for neighborhood/traversal queries
-	GraphNodeFetcher          ports.GraphNodeFetcher    // kernel narrow port: point read on graph
-	JournalStreamReader       ports.JournalStreamReader // kernel narrow port: stream read on journal
-	Journal                   ports.JournalStore        // underlying journal for JournalStreamReader creation
-	EntityRefReader           ports.EntityRefReader
-	WorkItemReader            WorkItemReader
-	WorkItemWriter            WorkItemWriter
-	SCMStreamReader           SCMStreamReader
-	ArtifactReader            ArtifactReader
-	ReleaseGraphReader        ReleaseGraphReader
-	SupplyChainEvidenceReader SupplyChainEvidenceReader
-	BlastRadiusQuery          BlastRadiusQuery
-	TestRunReader             TestRunReader
+// ParseETagVersion parses an RFC 7232 If-Match header value into a uint64 version.
+// It accepts strong validators ("3") and weak validators (W/"3"), stripping
+// the W/ prefix and surrounding quotes before parsing the integer.
+func ParseETagVersion(ifMatch string) (uint64, error) {
+	v := strings.TrimSpace(ifMatch)
+	v = strings.TrimPrefix(v, `W/`)
+	if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+		v = v[1 : len(v)-1]
+	}
+	return strconv.ParseUint(v, 10, 64)
+}
 
-	mu       sync.Mutex
-	registry map[string]string // pattern → label for middleware
-
-	// routeLabels is an optional pointer to the Server's route labels map.
-	// If set, RegisterRoute also records labels in this map.
+// registrationState holds the concurrency-safe bookkeeping for route registration.
+type registrationState struct {
+	mu          sync.Mutex
+	registry    map[string]string // pattern → label for middleware
 	routeLabels *map[string]string
+}
+
+// MountDeps holds all typed interface dependencies needed by mounted handlers.
+// It has exactly 5 external kernel-port fields plus 2 internal bookkeeping fields.
+// No sync.Mutex lives on MountDeps itself — composition is single-threaded at boot.
+type MountDeps struct {
+	Observability       ports.Observability       // kernel port: observability (optional)
+	Bus                 CommandSubmitter          // kernel port: command dispatcher
+	GraphStore          ports.GraphStore          // kernel port: graph read/write
+	GraphNodeFetcher    ports.GraphNodeFetcher    // kernel port: point read on graph
+	JournalStreamReader ports.JournalStreamReader // kernel port: stream read on journal
+
+	Journal  ports.JournalStore // backing journal for JournalStreamReader creation
+	regState *registrationState // internal concurrency-safe registration bookkeeping
 }
 
 // WorkItemReader is the narrow read port for work items.
@@ -173,27 +181,38 @@ type TestRun struct {
 	StartedAt string
 }
 
+// registrationState returns the registration state, creating it if needed.
+// This is concurrency-safe: RegisterRoute and RouteLabels lock on the inner mutex.
+func (d *MountDeps) registrationState() *registrationState {
+	if d.regState == nil {
+		d.regState = &registrationState{}
+	}
+	return d.regState
+}
+
 // RegisterRoute registers a route on mux and records it in the pattern registry.
 // It returns the effective pattern string and an error if overlap is detected.
 // The prefix argument specifies the anchor prefix (primary Pattern() or an
 // AdditionalPattern() from MultiMount). The registered path is <prefix><subpattern>
 // (e.g., "/api/v1/work-items" + "/{id}" = "/api/v1/work-items/{id}").
 // In Go 1.22+, the mux supports method-specific patterns like "GET /path".
+// RegisterRoute is NOT concurrency-safe — call it only at composition time.
 func (d *MountDeps) RegisterRoute(mux *http.ServeMux, method, subpattern, prefix string, h http.HandlerFunc) (effective string, err error) {
 	effective = prefix + subpattern
 	// Go 1.22+ mux uses method-specific patterns.
 	pattern := method + " " + effective
 
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	rs := d.registrationState()
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
 
-	if d.registry == nil {
-		d.registry = make(map[string]string)
+	if rs.registry == nil {
+		rs.registry = make(map[string]string)
 	}
 
 	// Check for overlap with existing registrations.
 	// Segments are compared; {param} wildcards allow sibling routes.
-	for existing := range d.registry {
+	for existing := range rs.registry {
 		// Extract pattern from existing (skip method prefix).
 		existingParts := strings.SplitN(existing, " ", 2)
 		if len(existingParts) != 2 {
@@ -207,11 +226,11 @@ func (d *MountDeps) RegisterRoute(mux *http.ServeMux, method, subpattern, prefix
 
 	// Use Handle (not HandleFunc) with method-specific pattern for Go 1.22+.
 	mux.Handle(pattern, http.HandlerFunc(h))
-	d.registry[pattern] = effective
+	rs.registry[pattern] = effective
 
 	// Also record in the Server's route labels map if set.
-	if d.routeLabels != nil {
-		(*d.routeLabels)[effective] = effective
+	if rs.routeLabels != nil {
+		(*rs.routeLabels)[effective] = effective
 	}
 
 	return effective, nil
@@ -245,13 +264,14 @@ func segmentsOverlap(a, b string) bool {
 // RouteLabels returns a copy of the current route label registry.
 // Used by the middleware to look up route labels for metrics.
 func (d *MountDeps) RouteLabels() map[string]string {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.registry == nil {
+	rs := d.registrationState()
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if rs.registry == nil {
 		return nil
 	}
-	out := make(map[string]string, len(d.registry))
-	for k, v := range d.registry {
+	out := make(map[string]string, len(rs.registry))
+	for k, v := range rs.registry {
 		out[k] = v
 	}
 	return out

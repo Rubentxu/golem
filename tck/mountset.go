@@ -21,20 +21,11 @@ func NewMountSet(rt *runtime.Runtime) []httpapi.HTTPMount {
 // MountDepsForRT builds MountDeps from a runtime.Runtime with all available ports wired.
 func MountDepsForRT(rt *runtime.Runtime) httpapi.MountDeps {
 	return httpapi.MountDeps{
-		Observability:             obs.Fill(ports.Observability{}),
-		Bus:                       rt.Bus,
-		GraphStore:                rt.Graph,
-		GraphNodeFetcher:          ports.NewGraphNodeFetcherOverGraphStore(rt.Graph),
-		JournalStreamReader:       ports.NewJournalStreamReaderOverJournalStore(rt.Journal),
-		Journal:                  rt.Journal,
-		EntityRefReader:           ports.NewEntityRefReaderOverGraphStore(rt.Graph),
-		WorkItemReader:            nil,
-		WorkItemWriter:            nil,
-		SCMStreamReader:           nil,
-		ArtifactReader:            nil,
-		ReleaseGraphReader:        nil,
-		SupplyChainEvidenceReader: nil,
-		BlastRadiusQuery:          nil,
-		TestRunReader:             nil,
+		Observability:       obs.Fill(ports.Observability{}),
+		Bus:                 rt.Bus,
+		GraphStore:          rt.Graph,
+		GraphNodeFetcher:    ports.NewGraphNodeFetcherOverGraphStore(rt.Graph),
+		JournalStreamReader: ports.NewJournalStreamReaderOverJournalStore(rt.Journal),
+		Journal:             rt.Journal,
 	}
 }

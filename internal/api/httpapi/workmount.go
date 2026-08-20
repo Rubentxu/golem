@@ -162,16 +162,27 @@ func (m *WorkMount) handleUpdateWorkItem(deps MountDeps) http.HandlerFunc {
 		var body struct {
 			Title   *string `json:"title,omitempty"`
 			Status  *string `json:"status,omitempty"`
-			Version *uint64 `json:"expected_version,omitempty"` // If-Match
+			Version *uint64 `json:"expected_version,omitempty"` // fallback if If-Match absent
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil {
 			m.problem(w, http.StatusBadRequest, CodeInvalidArgument, "invalid JSON body: "+err.Error(), corr)
 			return
 		}
 		cmdPayload := appwork.UpdateWorkItem{ItemID: id, Title: body.Title, Status: body.Status}
-		if body.Version != nil {
+
+		// If-Match header takes precedence over body.expected_version.
+		// Malformed ETag returns 400; absent header falls back to body.
+		if ifMatch := strings.TrimSpace(r.Header.Get("If-Match")); ifMatch != "" {
+			v, err := ParseETagVersion(ifMatch)
+			if err != nil {
+				m.problem(w, http.StatusBadRequest, CodeInvalidArgument, "If-Match must be a quoted stream version like \"3\"", corr)
+				return
+			}
+			cmdPayload.ExpectedVersion = &v
+		} else if body.Version != nil {
 			cmdPayload.ExpectedVersion = body.Version
 		}
+
 		receipt, err := deps.Bus.Submit(r.Context(), command.Command{
 			Name:          appwork.CmdUpdateWorkItem,
 			TenantID:      tenant,

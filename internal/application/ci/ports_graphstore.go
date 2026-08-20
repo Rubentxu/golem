@@ -17,14 +17,24 @@ func NewArtifactReaderOverGraphStore(gs ports.GraphStore) ArtifactReader {
 	return &graphStoreArtifactReader{gs: gs}
 }
 
-// DigestExists implements ArtifactReader by checking if the artifact node exists.
+// DigestExists implements ArtifactReader by checking if there is an inbound
+// PRODUCED edge to the given digest node. A node whose Kind is "ContainerImage"
+// but does not have an inbound PRODUCED edge is NOT considered an artifact.
 func (r *graphStoreArtifactReader) DigestExists(ctx context.Context, tenant, digest string) (bool, error) {
-	node, err := r.gs.GetNode(ctx, ports.TenantID(tenant), digest)
+	sub, err := r.gs.Neighborhood(ctx, ports.NeighborhoodQuery{
+		TenantID: ports.TenantID(tenant),
+		Roots:    []string{digest},
+		MaxDepth: 1,
+		MaxNodes: 64,
+		MaxEdges: 64,
+	})
 	if err != nil {
-		if err == ports.ErrNodeNotFound {
-			return false, nil
-		}
 		return false, err
 	}
-	return node.Kind == "Artifact", nil
+	for _, e := range sub.Edges {
+		if e.Type == "PRODUCED" && e.TargetID == digest {
+			return true, nil
+		}
+	}
+	return false, nil
 }

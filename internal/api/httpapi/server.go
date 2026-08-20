@@ -232,10 +232,13 @@ func (s *Server) routesWithMounts() http.Handler {
 	// Build MountDeps with a pointer to s.routeLabels so RegisterRoute
 	// can record labels for middleware.
 	deps := MountDeps{
-		Observability: s.obs,
-		Bus:          s.commands,
-		GraphNodeFetcher: ports.NewGraphNodeFetcherOverGraphStore(s.graph),
-		routeLabels:  &s.routeLabels,
+		Observability:       s.obs,
+		Bus:                s.commands,
+		GraphStore:         s.graph,
+		GraphNodeFetcher:   ports.NewGraphNodeFetcherOverGraphStore(s.graph),
+		regState: &registrationState{
+			routeLabels: &s.routeLabels,
+		},
 		// Other deps fields are nil for now; T10 wires them fully.
 	}
 

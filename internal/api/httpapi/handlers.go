@@ -106,7 +106,7 @@ func (s *Server) handleUpdateWorkItem(w http.ResponseWriter, r *http.Request) {
 	// If-Match carries the expected stream version (optional optimistic
 	// concurrency, API_GUIDELINES); absent means last-write-wins.
 	if ifMatch := strings.TrimSpace(r.Header.Get("If-Match")); ifMatch != "" {
-		v, err := parseETagVersion(ifMatch)
+		v, err := ParseETagVersion(ifMatch)
 		if err != nil {
 			s.problem(w, http.StatusBadRequest, CodeInvalidArgument, "If-Match must be a quoted stream version like \"3\"", corr)
 			return
@@ -134,15 +134,6 @@ func (s *Server) handleUpdateWorkItem(w http.ResponseWriter, r *http.Request) {
 		CommandID: receipt.CommandID, EventIDs: receipt.EventIDs,
 		Position: uint64(receipt.Position), Duplicate: receipt.Duplicate,
 	})
-}
-
-func parseETagVersion(ifMatch string) (uint64, error) {
-	v := strings.TrimSpace(ifMatch)
-	v = strings.TrimPrefix(v, `W/`)
-	if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
-		v = v[1 : len(v)-1]
-	}
-	return strconv.ParseUint(v, 10, 64)
 }
 
 // ---- POST /api/v1/work-items/{id}/links ----

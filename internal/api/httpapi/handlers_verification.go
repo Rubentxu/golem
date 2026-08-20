@@ -43,13 +43,7 @@ func (m *VerificationMount) handleReportTestRun(deps MountDeps) http.HandlerFunc
 			m.problem(w, http.StatusBadRequest, CodeInvalidArgument, "Idempotency-Key header is required (min 8 chars)", corr)
 			return
 		}
-		var body struct {
-			Tenant       string `json:"tenant"`
-			Target       string `json:"target"`
-			Case         string `json:"case"`
-			Status       string `json:"status"`
-			ArtifactPURL string `json:"artifact_purl,omitempty"`
-		}
+		var body appver.ReportTestRun
 		if err := decodeBody(w, r, &body); err != nil {
 			m.problem(w, http.StatusBadRequest, CodeInvalidArgument, "invalid JSON body: "+err.Error(), corr)
 			return

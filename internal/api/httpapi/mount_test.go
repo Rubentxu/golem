@@ -67,30 +67,23 @@ func TestRegisterRouteRejectsPatternOverlap(t *testing.T) {
 }
 
 func TestMountDepsTypedFieldsNoAny(t *testing.T) {
-	// Verify MountDeps has exactly 13 typed interface fields.
+	// Verify MountDeps has exactly 5 external typed interface fields plus
+	// 2 internal bookkeeping fields (registry, routeLabels via regState).
 	// This test uses compile-time checks: if any field is interface{} or any,
 	// the explicit type assertions below will fail to compile.
 	deps := MountDeps{}
 
-	// Suppress unused variable warnings.
+	// Suppress unused variable warnings — 5 external fields.
 	_ = deps.Observability
 	_ = deps.Bus
+	_ = deps.GraphStore
 	_ = deps.GraphNodeFetcher
 	_ = deps.JournalStreamReader
-	_ = deps.EntityRefReader
-	_ = deps.WorkItemReader
-	_ = deps.WorkItemWriter
-	_ = deps.SCMStreamReader
-	_ = deps.ArtifactReader
-	_ = deps.ReleaseGraphReader
-	_ = deps.SupplyChainEvidenceReader
-	_ = deps.BlastRadiusQuery
-	_ = deps.TestRunReader
 
 	// Verify all fields are non-nil interfaces (not interface{}).
 	// Using compile-time type assertions; if compilation succeeds,
 	// all fields are properly typed (not interface{} or any).
-	t.Log("MountDeps has 13 typed fields: Observability, Bus, GraphNodeFetcher, JournalStreamReader, EntityRefReader, WorkItemReader, WorkItemWriter, SCMStreamReader, ArtifactReader, ReleaseGraphReader, SupplyChainEvidenceReader, BlastRadiusQuery, TestRunReader")
+	t.Log("MountDeps has 5 external typed fields: Observability, Bus, GraphStore, GraphNodeFetcher, JournalStreamReader")
 }
 
 func TestMultiMountAdditionalPatternsEnumerated(t *testing.T) {

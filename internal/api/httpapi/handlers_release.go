@@ -159,7 +159,7 @@ func (m *ReleaseMount) handleBlastRadius(deps MountDeps) http.HandlerFunc {
 			m.problem(w, http.StatusBadRequest, CodeInvalidArgument, "invalid purl encoding", corr)
 			return
 		}
-		result, err := deps.BlastRadiusQuery.QueryBlastRadius(r.Context(), tenant, decoded)
+		result, err := supplychain.BlastRadius(r.Context(), deps.GraphStore, tenant, decoded)
 		if err != nil {
 			if errors.Is(err, supplychain.ErrInvalidPurlForBlast) {
 				m.problem(w, http.StatusUnprocessableEntity, CodeDomainRejection, "unknown component: "+url.QueryEscape(decoded), corr)
